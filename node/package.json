@@ -1,0 +1,18 @@
+{
+  "name": "superdoc-benchmark-harness",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "superdoc": "latest",
+    "vue": "^3.5.20"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^6.3.5",
+    "vite-plugin-node-polyfills": "^0.24.0"
+  }
+}

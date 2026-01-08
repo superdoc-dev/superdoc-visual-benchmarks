@@ -1,0 +1,54 @@
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f2f2f2;
+}
+
+#superdoc {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+#controls {
+  position: fixed;
+  left: 16px;
+  top: 16px;
+  z-index: 20;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d3d3d3;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+#fileInput {
+  font-size: 12px;
+}
+
+#status {
+  font-size: 12px;
+  color: #333;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+}
+
+.presentation-editor__pages {
+  gap: 0 !important;
+}
+
+.superdoc-page {
+  box-shadow: none !important;
+  margin: 0 !important;
+}
