@@ -25,6 +25,9 @@ sudo mv ~/Downloads/superdoc-benchmark /usr/local/bin/
 
 # macOS security: remove quarantine attribute
 xattr -d com.apple.quarantine /usr/local/bin/superdoc-benchmark
+
+# First run: install Playwright browser (one-time)
+npx playwright install chromium
 ```
 
 **From source:**

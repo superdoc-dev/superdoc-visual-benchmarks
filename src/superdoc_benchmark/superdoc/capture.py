@@ -1,20 +1,34 @@
 """SuperDoc document screenshot capture using Playwright."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+# Set up Playwright browser path BEFORE importing playwright
+# This ensures bundled and installed playwright look in the same place
+_BROWSERS_PATH = Path.home() / "Library" / "Caches" / "ms-playwright"
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_BROWSERS_PATH)
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 from .server import ViteServer
 
 
+def _is_bundled() -> bool:
+    """Check if running from a PyInstaller bundle."""
+    return getattr(sys, '_MEIPASS', None) is not None
+
+
 def ensure_playwright_browsers() -> None:
     """Ensure Playwright browsers are installed, installing if needed.
 
     This runs on first use and installs Chromium if not present.
+    Should be called at app startup.
     """
     from rich.console import Console
+    import shutil
+
     console = Console()
 
     # Try to launch browser to see if it's installed
@@ -30,20 +44,47 @@ def ensure_playwright_browsers() -> None:
     # Browser not installed, install it
     console.print("[yellow]Playwright browser not found. Installing Chromium (one-time setup)...[/yellow]")
 
+    # Build install command with explicit browser path
+    env = os.environ.copy()
+    env["PLAYWRIGHT_BROWSERS_PATH"] = str(_BROWSERS_PATH)
+
     try:
-        result = subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "chromium"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
+        if _is_bundled():
+            # Running from PyInstaller binary - use npx (requires Node.js)
+            npx_path = shutil.which("npx")
+            if npx_path:
+                result = subprocess.run(
+                    [npx_path, "playwright", "install", "chromium"],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    env=env,
+                )
+            else:
+                raise RuntimeError(
+                    "Playwright browser not found and Node.js is not available.\n\n"
+                    "Please install the browser manually by running:\n"
+                    f"  PLAYWRIGHT_BROWSERS_PATH='{_BROWSERS_PATH}' npx playwright install chromium\n\n"
+                    "This requires Node.js to be installed."
+                )
+        else:
+            # Running from source - use Python module
+            result = subprocess.run(
+                [sys.executable, "-m", "playwright", "install", "chromium"],
+                capture_output=True,
+                text=True,
+                timeout=300,
+                env=env,
+            )
+
         if result.returncode != 0:
-            raise RuntimeError(f"Failed to install browser: {result.stderr}")
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            raise RuntimeError(f"Failed to install browser: {error_msg}")
         console.print("[green]Browser installed successfully![/green]\n")
     except subprocess.TimeoutExpired:
         raise RuntimeError("Browser installation timed out")
-    except FileNotFoundError:
-        raise RuntimeError("Could not find playwright. Is it installed?")
+    except FileNotFoundError as e:
+        raise RuntimeError(f"Could not run browser installer: {e}")
 
 # Harness element selectors
 FILE_INPUT_SELECTOR = "#fileInput"

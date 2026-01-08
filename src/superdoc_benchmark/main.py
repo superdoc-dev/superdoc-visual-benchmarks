@@ -816,8 +816,20 @@ def cmd_version_set(
         raise typer.Exit(1)
 
 
+def _init_playwright() -> None:
+    """Initialize Playwright browser at startup."""
+    from superdoc_benchmark.superdoc.capture import ensure_playwright_browsers
+    try:
+        ensure_playwright_browsers()
+    except Exception as e:
+        console.print(f"[red]Warning:[/red] {e}")
+        console.print("[dim]SuperDoc captures may not work until browser is installed.[/dim]\n")
+
+
 def main() -> None:
     """Main entry point."""
+    # Ensure Playwright browser is available at startup
+    _init_playwright()
     app()
 
 
