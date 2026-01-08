@@ -5,14 +5,20 @@ set -e
 # Usage: ./scripts/release.sh 0.2.0
 #
 # For signed releases, set these environment variables:
-#   APPLE_SIGNING_IDENTITY  - e.g., "Developer ID Application: Your Name (TEAM_ID)"
-#   APPLE_ID                - Your Apple ID email
-#   APPLE_TEAM_ID           - Your Team ID
-#   SUPERDOC_BENCHMARK_APP_PASSWORD      - App-specific password from appleid.apple.com
+#   APPLE_SIGNING_IDENTITY           - e.g., "Developer ID Application: Your Name (TEAM_ID)"
+#   APPLE_INSTALLER_SIGNING_IDENTITY - e.g., "Developer ID Installer: Your Name (TEAM_ID)"
 #
-# If not set, the binary will be unsigned.
+# Notarization credentials should be stored in Keychain (one-time setup):
+#   xcrun notarytool store-credentials "notary-profile" \
+#     --apple-id "your@email.com" \
+#     --team-id "XXXXXXXXXX" \
+#     --password "app-specific-password"
+#
+# If signing identities are not set, the binary will be unsigned.
 
 VERSION=$1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENTITLEMENTS="$SCRIPT_DIR/entitlements.plist"
 
 if [ -z "$VERSION" ]; then
     echo "Usage: ./scripts/release.sh <version>"
@@ -29,11 +35,15 @@ fi
 
 # Check if signing is configured
 SIGNING_ENABLED=false
-if [ -n "$APPLE_SIGNING_IDENTITY" ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$SUPERDOC_BENCHMARK_APP_PASSWORD" ]; then
+if [ -n "$APPLE_SIGNING_IDENTITY" ] && [ -n "$APPLE_INSTALLER_SIGNING_IDENTITY" ]; then
     SIGNING_ENABLED=true
-    echo "Signing: enabled"
+    echo "Code signing: $APPLE_SIGNING_IDENTITY"
+    echo "Installer signing: $APPLE_INSTALLER_SIGNING_IDENTITY"
+elif [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+    echo "Warning: APPLE_SIGNING_IDENTITY set but APPLE_INSTALLER_SIGNING_IDENTITY missing"
+    echo "Signing: disabled (need both identities for .pkg distribution)"
 else
-    echo "Signing: disabled (set APPLE_* env vars to enable)"
+    echo "Signing: disabled (set APPLE_SIGNING_IDENTITY and APPLE_INSTALLER_SIGNING_IDENTITY to enable)"
 fi
 
 echo "Releasing v$VERSION..."
@@ -63,40 +73,70 @@ echo "Binary built at dist/superdoc-benchmark"
 
 # Sign and notarize if configured
 if [ "$SIGNING_ENABLED" = true ]; then
-    echo "Signing binary..."
+    echo "Signing binary with entitlements..."
     codesign --sign "$APPLE_SIGNING_IDENTITY" \
         --options runtime \
         --timestamp \
         --force \
+        --entitlements "$ENTITLEMENTS" \
         dist/superdoc-benchmark
 
     echo "Verifying signature..."
     codesign --verify --verbose dist/superdoc-benchmark
 
-    echo "Submitting for notarization (this may take a few minutes)..."
-    ditto -c -k --keepParent dist/superdoc-benchmark dist/superdoc-benchmark-notarize.zip
+    echo "Signature details:"
+    codesign -dvv dist/superdoc-benchmark 2>&1 | grep -E "(Identifier|Authority|Timestamp)"
 
-    xcrun notarytool submit dist/superdoc-benchmark-notarize.zip \
-        --apple-id "$APPLE_ID" \
-        --team-id "$APPLE_TEAM_ID" \
-        --password "$SUPERDOC_BENCHMARK_APP_PASSWORD" \
+    # Create .pkg installer (Apple's recommended format for CLI tools)
+    echo "Creating .pkg installer..."
+
+    # Create a temporary directory structure for pkgbuild
+    PKG_ROOT=$(mktemp -d)
+    mkdir -p "$PKG_ROOT/usr/local/bin"
+    cp dist/superdoc-benchmark "$PKG_ROOT/usr/local/bin/"
+
+    # Build the package
+    pkgbuild \
+        --root "$PKG_ROOT" \
+        --identifier "dev.superdoc.benchmark" \
+        --version "$VERSION" \
+        --install-location "/" \
+        --sign "$APPLE_INSTALLER_SIGNING_IDENTITY" \
+        dist/superdoc-benchmark-$VERSION.pkg
+
+    rm -rf "$PKG_ROOT"
+    echo "Created dist/superdoc-benchmark-$VERSION.pkg"
+
+    # Notarize the .pkg
+    echo "Submitting .pkg for notarization (this may take a few minutes)..."
+    xcrun notarytool submit dist/superdoc-benchmark-$VERSION.pkg \
+        --keychain-profile "notary-profile" \
         --wait
 
-    rm dist/superdoc-benchmark-notarize.zip
-    echo "Binary signed and notarized!"
+    # Staple the notarization ticket to the .pkg
+    echo "Stapling notarization ticket..."
+    xcrun stapler staple dist/superdoc-benchmark-$VERSION.pkg
+
+    echo "Package signed, notarized, and stapled!"
+
+    # Create GitHub release with .pkg
+    echo "Creating GitHub release..."
+    gh release create "v$VERSION" \
+        --title "v$VERSION" \
+        --generate-notes \
+        dist/superdoc-benchmark-$VERSION.pkg
+else
+    # Unsigned release: create zip for distribution
+    echo "Creating unsigned release zip..."
+    ditto -c -k --keepParent dist/superdoc-benchmark dist/superdoc-benchmark-macos.zip
+    echo "Created dist/superdoc-benchmark-macos.zip"
+
+    echo "Creating GitHub release (unsigned)..."
+    gh release create "v$VERSION" \
+        --title "v$VERSION" \
+        --generate-notes \
+        dist/superdoc-benchmark-macos.zip
 fi
-
-# Create zip for release (preserves executable permission)
-echo "Creating release zip..."
-cd dist && zip -r superdoc-benchmark-macos.zip superdoc-benchmark && cd ..
-echo "Created dist/superdoc-benchmark-macos.zip"
-
-# Create GitHub release with zip
-echo "Creating GitHub release..."
-gh release create "v$VERSION" \
-    --title "v$VERSION" \
-    --generate-notes \
-    dist/superdoc-benchmark-macos.zip
 
 echo ""
 echo "Release v$VERSION complete!"

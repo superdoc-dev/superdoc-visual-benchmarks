@@ -102,6 +102,25 @@ def ensure_workspace() -> Path:
 
     # Copy node config files
     node_dir = get_resource_path("node")
+    missing_assets = []
+    required_node_files = ["package.json", "vite.config.js"]
+    for filename in required_node_files:
+        if not (node_dir / filename).exists():
+            missing_assets.append(f"node/{filename}")
+
+    harness_src = get_resource_path("harness")
+    if not harness_src.exists():
+        missing_assets.append("harness/")
+
+    if missing_assets:
+        missing_list = ", ".join(missing_assets)
+        raise RuntimeError(
+            "Required benchmark assets are missing: "
+            f"{missing_list}. "
+            "If you're using the bundled binary, reinstall it. "
+            "If running from source, ensure the repo contains the node/ and harness/ folders."
+        )
+
     for filename in ["package.json", "vite.config.js"]:
         src = node_dir / filename
         dst = WORKSPACE_DIR / filename
@@ -109,7 +128,6 @@ def ensure_workspace() -> Path:
             shutil.copy(src, dst)
 
     # Copy harness files
-    harness_src = get_resource_path("harness")
     harness_dst = WORKSPACE_DIR / "harness"
     if harness_src.exists():
         if harness_dst.exists():

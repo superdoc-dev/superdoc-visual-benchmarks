@@ -2,6 +2,8 @@
 
 datas = [
     ('scripts/export_word_pdf.applescript', 'scripts'),
+    ('harness', 'harness'),
+    ('node', 'node'),
 ]
 binaries = []
 hiddenimports = []
