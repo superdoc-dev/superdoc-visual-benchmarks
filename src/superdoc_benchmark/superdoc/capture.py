@@ -1,10 +1,49 @@
 """SuperDoc document screenshot capture using Playwright."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 from .server import ViteServer
+
+
+def ensure_playwright_browsers() -> None:
+    """Ensure Playwright browsers are installed, installing if needed.
+
+    This runs on first use and installs Chromium if not present.
+    """
+    from rich.console import Console
+    console = Console()
+
+    # Try to launch browser to see if it's installed
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            browser.close()
+        return  # Browser exists, we're good
+    except Exception as e:
+        if "Executable doesn't exist" not in str(e):
+            raise  # Different error, re-raise
+
+    # Browser not installed, install it
+    console.print("[yellow]Playwright browser not found. Installing Chromium (one-time setup)...[/yellow]")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to install browser: {result.stderr}")
+        console.print("[green]Browser installed successfully![/green]\n")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Browser installation timed out")
+    except FileNotFoundError:
+        raise RuntimeError("Could not find playwright. Is it installed?")
 
 # Harness element selectors
 FILE_INPUT_SELECTOR = "#fileInput"
@@ -203,6 +242,9 @@ def capture_single_document(
     Raises:
         RuntimeError: If capture fails.
     """
+    # Ensure browser is installed (auto-installs on first run)
+    ensure_playwright_browsers()
+
     if output_dir is None:
         output_dir = get_superdoc_output_dir(docx_path)
 
@@ -244,6 +286,9 @@ def capture_superdoc_visuals(
     console = Console()
     results = []
     errors = []
+
+    # Ensure browser is installed (auto-installs on first run)
+    ensure_playwright_browsers()
 
     console.print()
 
