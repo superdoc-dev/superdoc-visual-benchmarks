@@ -273,25 +273,46 @@ def run_compare(docx_files: list[Path]) -> None:
     capture_superdoc_visuals(docx_files)
 
     # Generate comparison reports
-    console.print(f"📊 [cyan]Generating comparison reports...[/cyan]")
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
     report_results = []
     report_errors = []
 
-    for docx_path in docx_files:
-        word_dir = get_word_output_dir(docx_path)
-        superdoc_dir = get_superdoc_output_dir(docx_path)
+    console.print()
 
-        try:
-            result = generate_reports(
-                docx_name=docx_path.stem,
-                word_dir=word_dir,
-                superdoc_dir=superdoc_dir,
-                version_label=version_label,
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+    ) as progress:
+        report_task = progress.add_task(
+            "[cyan]Generating comparison reports...", total=len(docx_files)
+        )
+
+        for docx_path in docx_files:
+            progress.update(
+                report_task,
+                description=f"[cyan]Generating report: [white]{docx_path.name}",
             )
-            report_results.append((docx_path, result))
-        except Exception as exc:
-            report_errors.append((docx_path, str(exc)))
+
+            word_dir = get_word_output_dir(docx_path)
+            superdoc_dir = get_superdoc_output_dir(docx_path)
+
+            try:
+                result = generate_reports(
+                    docx_name=docx_path.stem,
+                    word_dir=word_dir,
+                    superdoc_dir=superdoc_dir,
+                    version_label=version_label,
+                )
+                report_results.append((docx_path, result))
+            except Exception as exc:
+                report_errors.append((docx_path, str(exc)))
+                console.print(f"  [red]Error:[/red] {docx_path.name}: {exc}")
+
+            progress.advance(report_task)
 
     # Summary
     console.print()
