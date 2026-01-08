@@ -216,6 +216,26 @@ def handle_compare_docx() -> None:
     run_compare(docx_files)
 
 
+def _generate_report_task(
+    docx_path: Path,
+    word_dir: Path,
+    superdoc_dir: Path,
+    version_label: str,
+) -> dict:
+    """Worker function for parallel report generation.
+
+    This is a module-level function so it can be pickled for ProcessPoolExecutor.
+    """
+    from superdoc_benchmark.compare import generate_reports
+
+    return generate_reports(
+        docx_name=docx_path.stem,
+        word_dir=word_dir,
+        superdoc_dir=superdoc_dir,
+        version_label=version_label,
+    )
+
+
 def run_compare(docx_files: list[Path]) -> None:
     """Run the compare workflow for a list of docx files."""
     from superdoc_benchmark.word import (
@@ -227,10 +247,15 @@ def run_compare(docx_files: list[Path]) -> None:
         get_superdoc_output_dir,
         get_superdoc_version_label,
     )
+    from superdoc_benchmark.superdoc.config import get_config
     from superdoc_benchmark.compare import generate_reports
 
     version_label = get_superdoc_version_label()
-    console.print(f"[dim]SuperDoc version: [cyan]{version_label}[/cyan][/dim]")
+    config = get_config()
+    is_local = config.get("superdoc_local_path") is not None
+
+    version_type = "local" if is_local else "npm"
+    console.print(f"[dim]SuperDoc version: [cyan]{version_label}[/cyan] ({version_type})[/dim]")
 
     if len(docx_files) == 1:
         console.print(f"[dim]Processing: {docx_files[0].name}[/dim]")
@@ -247,6 +272,16 @@ def run_compare(docx_files: list[Path]) -> None:
         if not word_pages:
             word_missing.append(docx_path)
 
+    # Check which files need SuperDoc screenshots
+    # - Local version: always recapture (code may have changed)
+    # - NPM version: only capture if missing
+    superdoc_missing = []
+    for docx_path in docx_files:
+        superdoc_dir = get_superdoc_output_dir(docx_path)
+        superdoc_pages = list(superdoc_dir.glob("page_*.png")) if superdoc_dir.exists() else []
+        if is_local or not superdoc_pages:
+            superdoc_missing.append(docx_path)
+
     # Report status
     console.print("[bold]Capture status:[/bold]")
     for docx_path in docx_files:
@@ -257,7 +292,11 @@ def run_compare(docx_files: list[Path]) -> None:
         superdoc_pages = list(superdoc_dir.glob("page_*.png")) if superdoc_dir.exists() else []
 
         word_status = f"[green]{len(word_pages)} pages[/green]" if word_pages else "[yellow]missing[/yellow]"
-        sd_status = f"[dim]{len(superdoc_pages)} pages (will recapture)[/dim]" if superdoc_pages else "[yellow]missing[/yellow]"
+
+        if is_local:
+            sd_status = f"[dim]{len(superdoc_pages)} pages (will recapture - local)[/dim]" if superdoc_pages else "[yellow]missing[/yellow]"
+        else:
+            sd_status = f"[green]{len(superdoc_pages)} pages[/green]" if superdoc_pages else "[yellow]missing[/yellow]"
 
         console.print(f"  [dim]•[/dim] {docx_path.name}: Word={word_status}, SuperDoc={sd_status}")
 
@@ -268,17 +307,35 @@ def run_compare(docx_files: list[Path]) -> None:
         console.print(f"📄 [cyan]Capturing Word screenshots for {len(word_missing)} file(s)...[/cyan]")
         capture_word_visuals(word_missing)
 
-    # Always capture SuperDoc screenshots
-    console.print(f"🦋 [cyan]Capturing SuperDoc ({version_label}) screenshots for {len(docx_files)} file(s)...[/cyan]")
-    capture_superdoc_visuals(docx_files)
+    # Capture SuperDoc screenshots (missing only for npm, all for local)
+    if superdoc_missing:
+        if is_local:
+            console.print(f"🦋 [cyan]Capturing SuperDoc ({version_label}) screenshots for {len(superdoc_missing)} file(s) (local - always recapture)...[/cyan]")
+        else:
+            console.print(f"🦋 [cyan]Capturing SuperDoc ({version_label}) screenshots for {len(superdoc_missing)} file(s)...[/cyan]")
+        capture_superdoc_visuals(superdoc_missing)
+    else:
+        console.print(f"🦋 [dim]SuperDoc captures exist for all files (npm version - skipping)[/dim]")
 
-    # Generate comparison reports
+    # Generate comparison reports (parallel for multiple files)
+    from concurrent.futures import ProcessPoolExecutor, as_completed
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+    import os
 
     report_results = []
     report_errors = []
 
     console.print()
+
+    # Prepare arguments for parallel execution
+    report_args = []
+    for docx_path in docx_files:
+        word_dir = get_word_output_dir(docx_path)
+        superdoc_dir = get_superdoc_output_dir(docx_path)
+        report_args.append((docx_path, word_dir, superdoc_dir, version_label))
+
+    # Use parallel processing for multiple files, sequential for single file
+    max_workers = min(len(docx_files), max(1, os.cpu_count() - 1)) if len(docx_files) > 1 else 1
 
     with Progress(
         SpinnerColumn(),
@@ -291,28 +348,54 @@ def run_compare(docx_files: list[Path]) -> None:
             "[cyan]Generating comparison reports...", total=len(docx_files)
         )
 
-        for docx_path in docx_files:
+        if max_workers == 1:
+            # Sequential processing for single file
+            for docx_path, word_dir, superdoc_dir, ver_label in report_args:
+                progress.update(
+                    report_task,
+                    description=f"[cyan]Generating report: [white]{docx_path.name}",
+                )
+                try:
+                    result = generate_reports(
+                        docx_name=docx_path.stem,
+                        word_dir=word_dir,
+                        superdoc_dir=superdoc_dir,
+                        version_label=ver_label,
+                    )
+                    report_results.append((docx_path, result))
+                except Exception as exc:
+                    report_errors.append((docx_path, str(exc)))
+                    console.print(f"  [red]Error:[/red] {docx_path.name}: {exc}")
+                progress.advance(report_task)
+        else:
+            # Parallel processing for multiple files
             progress.update(
                 report_task,
-                description=f"[cyan]Generating report: [white]{docx_path.name}",
+                description=f"[cyan]Generating reports ({max_workers} workers)...",
             )
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all tasks
+                future_to_path = {
+                    executor.submit(
+                        _generate_report_task,
+                        docx_path,
+                        word_dir,
+                        superdoc_dir,
+                        ver_label,
+                    ): docx_path
+                    for docx_path, word_dir, superdoc_dir, ver_label in report_args
+                }
 
-            word_dir = get_word_output_dir(docx_path)
-            superdoc_dir = get_superdoc_output_dir(docx_path)
-
-            try:
-                result = generate_reports(
-                    docx_name=docx_path.stem,
-                    word_dir=word_dir,
-                    superdoc_dir=superdoc_dir,
-                    version_label=version_label,
-                )
-                report_results.append((docx_path, result))
-            except Exception as exc:
-                report_errors.append((docx_path, str(exc)))
-                console.print(f"  [red]Error:[/red] {docx_path.name}: {exc}")
-
-            progress.advance(report_task)
+                # Collect results as they complete
+                for future in as_completed(future_to_path):
+                    docx_path = future_to_path[future]
+                    try:
+                        result = future.result()
+                        report_results.append((docx_path, result))
+                    except Exception as exc:
+                        report_errors.append((docx_path, str(exc)))
+                        console.print(f"  [red]Error:[/red] {docx_path.name}: {exc}")
+                    progress.advance(report_task)
 
     # Summary
     console.print()
