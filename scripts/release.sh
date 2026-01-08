@@ -12,7 +12,7 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-# Ensure we're on main branch and up to date
+# Ensure we're on main branch
 BRANCH=$(git branch --show-current)
 if [ "$BRANCH" != "main" ]; then
     echo "Error: Must be on main branch (currently on $BRANCH)"
@@ -49,4 +49,4 @@ gh release create "v$VERSION" \
 
 echo ""
 echo "Release v$VERSION complete!"
-echo "View at: $(gh browse -n)/releases/tag/v$VERSION"
+echo "Download at: $(gh browse -n)/releases/tag/v$VERSION"

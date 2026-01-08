@@ -1,5 +1,9 @@
 """Main entry point for superdoc-benchmark CLI."""
 
+from pathlib import Path
+from typing import Optional
+
+import typer
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from rich.console import Console
@@ -8,30 +12,27 @@ from rich.text import Text
 from superdoc_benchmark import __version__
 
 console = Console()
+app = typer.Typer(
+    help="Visual benchmarking tool for SuperDoc document rendering.",
+    no_args_is_help=False,
+    invoke_without_command=True,
+)
 
 # ASCII art logo - "SUPER" in dark teal, "DOC" in dark purple
-# Using hex colors for a darker, more mysterious vibe
-SUPER_COLOR = "#0E7490"  # dark teal/cyan
-DOC_COLOR = "#7C3AED"    # dark violet/purple
+SUPER_COLOR = "#0E7490"
+DOC_COLOR = "#7C3AED"
 
 LOGO_LINES = [
-    # Each tuple: (text, style)
-    # Line 1
     [("███████╗██╗   ██╗██████╗ ███████╗██████╗ ", SUPER_COLOR),
      ("██████╗  ██████╗  ██████╗", DOC_COLOR)],
-    # Line 2
     [("██╔════╝██║   ██║██╔══██╗██╔════╝██╔══██╗", SUPER_COLOR),
      ("██╔══██╗██╔═══██╗██╔════╝", DOC_COLOR)],
-    # Line 3
     [("███████╗██║   ██║██████╔╝█████╗  ██████╔╝", SUPER_COLOR),
      ("██║  ██║██║   ██║██║     ", DOC_COLOR)],
-    # Line 4
     [("╚════██║██║   ██║██╔═══╝ ██╔══╝  ██╔══██╗", SUPER_COLOR),
      ("██║  ██║██║   ██║██║     ", DOC_COLOR)],
-    # Line 5
     [("███████║╚██████╔╝██║     ███████╗██║  ██║", SUPER_COLOR),
      ("██████╔╝╚██████╔╝╚██████╗", DOC_COLOR)],
-    # Line 6
     [("╚══════╝ ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═╝", SUPER_COLOR),
      ("╚═════╝  ╚═════╝  ╚═════╝", DOC_COLOR)],
 ]
@@ -53,16 +54,11 @@ def show_welcome() -> None:
     from superdoc_benchmark.superdoc.config import get_config
 
     console.print()
-
-    # Butterfly (centered over ~66 char logo)
     console.print("                            ⟡ 🦋 ⟡", highlight=False)
     console.print()
-
-    # Big ASCII logo
     console.print(get_logo())
-
-    # Version and subtitle
     console.print()
+
     subtitle = Text()
     subtitle.append("  Benchmark", style=f"bold {SUPER_COLOR}")
     subtitle.append(" v" + __version__, style="dim")
@@ -70,7 +66,6 @@ def show_welcome() -> None:
     subtitle.append("Visual comparison for document rendering", style="dim italic")
     console.print(subtitle)
 
-    # Current SuperDoc version
     config = get_config()
     superdoc_version = config.get("superdoc_version")
     superdoc_local = config.get("superdoc_local_path")
@@ -87,7 +82,6 @@ def show_welcome() -> None:
         superdoc_status.append("not configured", style="yellow")
         superdoc_status.append(" (use option 3 to set)", style="dim")
     console.print(superdoc_status)
-
     console.print()
 
 
@@ -113,13 +107,12 @@ def show_main_menu() -> str | None:
 
 
 def handle_generate_word_visual() -> None:
-    """Handle the Generate Word visual option."""
+    """Handle the Generate Word visual option (interactive)."""
     from superdoc_benchmark.utils import find_docx_files, validate_path
     from superdoc_benchmark.word import capture_word_visuals, get_word_output_dir
 
     console.print()
 
-    # Ask for file or folder path
     try:
         path_str = inquirer.filepath(
             message="Enter path to .docx file or folder:",
@@ -140,27 +133,23 @@ def handle_generate_word_visual() -> None:
         console.print("[red]Invalid path[/red]\n")
         return
 
-    # Find all docx files
     docx_files = find_docx_files(path)
 
     if not docx_files:
         console.print(f"[yellow]No .docx files found in {path}[/yellow]\n")
         return
 
-    # Show what we found
     if path.is_dir():
         console.print(f"[dim]Found {len(docx_files)} .docx file(s) in {path}[/dim]")
     else:
         console.print(f"[dim]Processing: {path.name}[/dim]")
 
-    # Check which files already have captures
     existing_captures = []
     for docx_path in docx_files:
         word_dir = get_word_output_dir(docx_path)
         if word_dir.exists() and list(word_dir.glob("page_*.png")):
             existing_captures.append(docx_path)
 
-    # If captures exist, ask to override
     if existing_captures:
         console.print()
         console.print(f"[yellow]Word captures already exist for {len(existing_captures)} file(s):[/yellow]")
@@ -182,44 +171,22 @@ def handle_generate_word_visual() -> None:
             console.print("[dim]Cancelled[/dim]\n")
             return
 
-    # Run the capture process
     capture_word_visuals(docx_files, force=True)
 
 
 def handle_compare_docx() -> None:
-    """Handle the Compare DOCX option."""
-    from pathlib import Path
-
+    """Handle the Compare DOCX option (interactive)."""
     from superdoc_benchmark.utils import find_docx_files, validate_path
-    from superdoc_benchmark.word import (
-        capture_single_document as capture_word_single,
-        get_word_output_dir,
-        get_document_dir,
-    )
-    from superdoc_benchmark.superdoc import (
-        capture_superdoc_single,
-        get_superdoc_output_dir,
-        get_superdoc_version_label,
-        get_installed_version,
-        ViteServer,
-        capture_superdoc_pages,
-    )
     from superdoc_benchmark.superdoc.config import get_config
 
     console.print()
 
-    # Check if SuperDoc is configured
     config = get_config()
     if not config.get("superdoc_version") and not config.get("superdoc_local_path"):
         console.print("[yellow]SuperDoc is not configured.[/yellow]")
         console.print("[dim]Use option 3 to set a SuperDoc version first.[/dim]\n")
         return
 
-    # Get current SuperDoc version label
-    version_label = get_superdoc_version_label()
-    console.print(f"[dim]SuperDoc version: [cyan]{version_label}[/cyan][/dim]")
-
-    # Ask for file or folder path
     try:
         path_str = inquirer.filepath(
             message="Enter path to .docx file or folder:",
@@ -240,24 +207,40 @@ def handle_compare_docx() -> None:
         console.print("[red]Invalid path[/red]\n")
         return
 
-    # Find all docx files
     docx_files = find_docx_files(path)
 
     if not docx_files:
         console.print(f"[yellow]No .docx files found in {path}[/yellow]\n")
         return
 
-    # Show what we found
-    if path.is_dir():
-        console.print(f"[dim]Found {len(docx_files)} .docx file(s) in {path}[/dim]")
+    run_compare(docx_files)
+
+
+def run_compare(docx_files: list[Path]) -> None:
+    """Run the compare workflow for a list of docx files."""
+    from superdoc_benchmark.word import (
+        capture_word_visuals,
+        get_word_output_dir,
+    )
+    from superdoc_benchmark.superdoc import (
+        capture_superdoc_visuals,
+        get_superdoc_output_dir,
+        get_superdoc_version_label,
+    )
+    from superdoc_benchmark.compare import generate_reports
+
+    version_label = get_superdoc_version_label()
+    console.print(f"[dim]SuperDoc version: [cyan]{version_label}[/cyan][/dim]")
+
+    if len(docx_files) == 1:
+        console.print(f"[dim]Processing: {docx_files[0].name}[/dim]")
     else:
-        console.print(f"[dim]Processing: {path.name}[/dim]")
+        console.print(f"[dim]Found {len(docx_files)} .docx file(s)[/dim]")
 
     console.print()
 
-    # Check which files need Word screenshots (SuperDoc always recaptured)
+    # Check which files need Word screenshots
     word_missing = []
-
     for docx_path in docx_files:
         word_dir = get_word_output_dir(docx_path)
         word_pages = list(word_dir.glob("page_*.png")) if word_dir.exists() else []
@@ -283,17 +266,14 @@ def handle_compare_docx() -> None:
     # Capture missing Word screenshots
     if word_missing:
         console.print(f"📄 [cyan]Capturing Word screenshots for {len(word_missing)} file(s)...[/cyan]")
-        from superdoc_benchmark.word import capture_word_visuals
         capture_word_visuals(word_missing)
 
-    # Always capture SuperDoc screenshots (for current version)
+    # Always capture SuperDoc screenshots
     console.print(f"🦋 [cyan]Capturing SuperDoc ({version_label}) screenshots for {len(docx_files)} file(s)...[/cyan]")
-    from superdoc_benchmark.superdoc import capture_superdoc_visuals
     capture_superdoc_visuals(docx_files)
 
     # Generate comparison reports
     console.print(f"📊 [cyan]Generating comparison reports...[/cyan]")
-    from superdoc_benchmark.compare import generate_reports
 
     report_results = []
     report_errors = []
@@ -340,7 +320,7 @@ def handle_compare_docx() -> None:
 
 
 def handle_set_superdoc_version() -> None:
-    """Handle the Set SuperDoc version option."""
+    """Handle the Set SuperDoc version option (interactive)."""
     from superdoc_benchmark.superdoc.config import (
         get_config,
         set_superdoc_version,
@@ -356,7 +336,6 @@ def handle_set_superdoc_version() -> None:
 
     console.print()
 
-    # Show current configuration
     config = get_config()
     current_version = config.get("superdoc_version")
     current_local = config.get("superdoc_local_path")
@@ -373,7 +352,6 @@ def handle_set_superdoc_version() -> None:
 
     console.print()
 
-    # Submenu for configuration options
     choices = [
         Choice(value="latest", name="Install 'latest'"),
         Choice(value="next", name="Install 'next'"),
@@ -381,7 +359,6 @@ def handle_set_superdoc_version() -> None:
         Choice(value="local", name="Use local repository"),
     ]
 
-    # Add re-install option if there's a current version
     if current_version or current_local:
         choices.append(Choice(value="reinstall", name="Re-install current version"))
 
@@ -399,20 +376,15 @@ def handle_set_superdoc_version() -> None:
         return
 
     if action == "reinstall":
-        # Re-install current configuration
         if not is_npm_available():
             console.print("[red]npm is not installed. Please install Node.js first.[/red]\n")
             return
 
         try:
             if current_local:
-                # Re-install from local path
                 from superdoc_benchmark.superdoc.version import install_superdoc_local
-                from pathlib import Path
 
                 repo_root = Path(current_local)
-
-                # Re-validate to get package path
                 is_valid, version, package_path, error = validate_local_repo(repo_root)
                 if not is_valid:
                     console.print(f"[red]Invalid repository:[/red] {error}\n")
@@ -423,7 +395,6 @@ def handle_set_superdoc_version() -> None:
 
                 console.print(f"[green]Done![/green] Re-installed local SuperDoc {version} from {repo_root}\n")
             else:
-                # Re-install npm version
                 with console.status(f"[cyan]Re-installing superdoc@{current_version}...", spinner="dots"):
                     install_superdoc_version(current_version)
                     actual_version = get_installed_version()
@@ -436,7 +407,6 @@ def handle_set_superdoc_version() -> None:
         return
 
     if action == "latest":
-        # Install latest tag
         if not is_npm_available():
             console.print("[red]npm is not installed. Please install Node.js first.[/red]\n")
             return
@@ -453,7 +423,6 @@ def handle_set_superdoc_version() -> None:
             console.print(f"[red]Installation failed:[/red] {exc}\n")
 
     elif action == "next":
-        # Install next tag
         if not is_npm_available():
             console.print("[red]npm is not installed. Please install Node.js first.[/red]\n")
             return
@@ -470,12 +439,10 @@ def handle_set_superdoc_version() -> None:
             console.print(f"[red]Installation failed:[/red] {exc}\n")
 
     elif action == "npm":
-        # Check npm availability
         if not is_npm_available():
             console.print("[red]npm is not installed. Please install Node.js first.[/red]\n")
             return
 
-        # Ask for version
         try:
             version = inquirer.text(
                 message="Enter SuperDoc version:",
@@ -493,7 +460,6 @@ def handle_set_superdoc_version() -> None:
 
         version = version.strip()
 
-        # Confirm installation
         console.print(f"\n[dim]Will install superdoc@{version} from npm...[/dim]")
 
         try:
@@ -508,7 +474,6 @@ def handle_set_superdoc_version() -> None:
             console.print(f"[red]Installation failed:[/red] {exc}\n")
 
     elif action == "local":
-        # Ask for path
         try:
             path_str = inquirer.filepath(
                 message="Enter path to SuperDoc repository:",
@@ -529,24 +494,20 @@ def handle_set_superdoc_version() -> None:
             console.print("[red]Invalid path[/red]\n")
             return
 
-        # Validate the repo
         is_valid, version, package_path, error = validate_local_repo(path)
 
         if not is_valid:
             console.print(f"[red]Invalid repository:[/red] {error}\n")
             return
 
-        # Show detected package path
         if package_path != path:
             console.print(f"[dim]Detected package at: {package_path}[/dim]")
 
-        # Install from local path
         from superdoc_benchmark.superdoc.version import install_superdoc_local
 
         try:
             with console.status(f"[cyan]Building and installing superdoc from {path}...", spinner="dots"):
                 install_superdoc_local(package_path, repo_root=path)
-                # Store the repo root (user's input) so we can rebuild on reinstall
                 set_superdoc_local_path(path)
 
             console.print(f"[green]Done![/green] Using local SuperDoc {version} from {path}\n")
@@ -555,8 +516,8 @@ def handle_set_superdoc_version() -> None:
             console.print(f"[red]Installation failed:[/red] {exc}\n")
 
 
-def main() -> None:
-    """Main entry point."""
+def interactive_mode() -> None:
+    """Run the interactive menu-driven interface."""
     show_welcome()
 
     while True:
@@ -575,6 +536,171 @@ def main() -> None:
         except KeyboardInterrupt:
             console.print("\n[dim]Cancelled[/dim]\n")
             continue
+
+
+# =============================================================================
+# CLI Commands
+# =============================================================================
+
+@app.callback(invoke_without_command=True)
+def main_callback(ctx: typer.Context) -> None:
+    """SuperDoc visual benchmarking tool.
+
+    Run without arguments for interactive mode.
+    """
+    if ctx.invoked_subcommand is None:
+        interactive_mode()
+
+
+@app.command("word")
+def cmd_word(
+    path: Path = typer.Argument(..., help="Path to .docx file or folder"),
+    dpi: int = typer.Option(144, "--dpi", "-d", help="DPI for rasterization"),
+    force: bool = typer.Option(False, "--force", "-f", help="Override existing captures"),
+) -> None:
+    """Capture Word visuals for .docx files."""
+    from superdoc_benchmark.utils import find_docx_files
+    from superdoc_benchmark.word import capture_word_visuals
+
+    if not path.exists():
+        console.print(f"[red]Path not found:[/red] {path}")
+        raise typer.Exit(1)
+
+    docx_files = find_docx_files(path)
+
+    if not docx_files:
+        console.print(f"[yellow]No .docx files found in {path}[/yellow]")
+        raise typer.Exit(1)
+
+    console.print(f"[dim]Processing {len(docx_files)} .docx file(s)...[/dim]")
+    capture_word_visuals(docx_files, dpi=dpi, force=force)
+
+
+@app.command("compare")
+def cmd_compare(
+    path: Path = typer.Argument(..., help="Path to .docx file or folder"),
+) -> None:
+    """Compare Word and SuperDoc rendering for .docx files."""
+    from superdoc_benchmark.utils import find_docx_files
+    from superdoc_benchmark.superdoc.config import get_config
+
+    if not path.exists():
+        console.print(f"[red]Path not found:[/red] {path}")
+        raise typer.Exit(1)
+
+    config = get_config()
+    if not config.get("superdoc_version") and not config.get("superdoc_local_path"):
+        console.print("[red]SuperDoc is not configured.[/red]")
+        console.print("[dim]Run: superdoc-benchmark version set <version>[/dim]")
+        raise typer.Exit(1)
+
+    docx_files = find_docx_files(path)
+
+    if not docx_files:
+        console.print(f"[yellow]No .docx files found in {path}[/yellow]")
+        raise typer.Exit(1)
+
+    run_compare(docx_files)
+
+
+# Version subcommand group
+version_app = typer.Typer(help="Manage SuperDoc version")
+app.add_typer(version_app, name="version")
+
+
+@version_app.callback(invoke_without_command=True)
+def version_callback(ctx: typer.Context) -> None:
+    """Show or manage SuperDoc version."""
+    if ctx.invoked_subcommand is None:
+        # Show current version
+        from superdoc_benchmark.superdoc.config import get_config
+        from superdoc_benchmark.superdoc.version import get_installed_version
+
+        config = get_config()
+        current_version = config.get("superdoc_version")
+        current_local = config.get("superdoc_local_path")
+        installed = get_installed_version()
+
+        console.print()
+        if current_version:
+            console.print(f"[bold]Configured:[/bold] {current_version} (npm)")
+            if installed:
+                console.print(f"[bold]Installed:[/bold]  {installed}")
+        elif current_local:
+            console.print(f"[bold]Configured:[/bold] local ({current_local})")
+            if installed:
+                console.print(f"[bold]Installed:[/bold]  {installed}")
+        else:
+            console.print("[yellow]SuperDoc is not configured.[/yellow]")
+            console.print("[dim]Run: superdoc-benchmark version set <version>[/dim]")
+        console.print()
+
+
+@version_app.command("set")
+def cmd_version_set(
+    version: Optional[str] = typer.Argument(None, help="Version to install (e.g., 1.0.0, latest, next)"),
+    local: Optional[Path] = typer.Option(None, "--local", "-l", help="Path to local SuperDoc repository"),
+) -> None:
+    """Set the SuperDoc version to use."""
+    from superdoc_benchmark.superdoc.config import set_superdoc_version, set_superdoc_local_path
+    from superdoc_benchmark.superdoc.version import (
+        install_superdoc_version,
+        install_superdoc_local,
+        validate_local_repo,
+        get_installed_version,
+        is_npm_available,
+    )
+
+    if local:
+        # Install from local path
+        if not local.exists():
+            console.print(f"[red]Path not found:[/red] {local}")
+            raise typer.Exit(1)
+
+        is_valid, ver, package_path, error = validate_local_repo(local)
+        if not is_valid:
+            console.print(f"[red]Invalid repository:[/red] {error}")
+            raise typer.Exit(1)
+
+        try:
+            with console.status(f"[cyan]Building and installing superdoc from {local}...", spinner="dots"):
+                install_superdoc_local(package_path, repo_root=local)
+                set_superdoc_local_path(local)
+
+            console.print(f"[green]Done![/green] Using local SuperDoc {ver} from {local}")
+        except Exception as exc:
+            console.print(f"[red]Installation failed:[/red] {exc}")
+            raise typer.Exit(1)
+
+    elif version:
+        # Install from npm
+        if not is_npm_available():
+            console.print("[red]npm is not installed. Please install Node.js first.[/red]")
+            raise typer.Exit(1)
+
+        try:
+            with console.status(f"[cyan]Installing superdoc@{version}...", spinner="dots"):
+                install_superdoc_version(version)
+                actual_version = get_installed_version()
+                set_superdoc_version(actual_version or version)
+
+            console.print(f"[green]Done![/green] SuperDoc {actual_version or version} is now active.")
+        except Exception as exc:
+            console.print(f"[red]Installation failed:[/red] {exc}")
+            raise typer.Exit(1)
+
+    else:
+        console.print("[red]Provide a version or use --local[/red]")
+        console.print("[dim]Examples:[/dim]")
+        console.print("[dim]  superdoc-benchmark version set latest[/dim]")
+        console.print("[dim]  superdoc-benchmark version set 1.0.0[/dim]")
+        console.print("[dim]  superdoc-benchmark version set --local /path/to/repo[/dim]")
+        raise typer.Exit(1)
+
+
+def main() -> None:
+    """Main entry point."""
+    app()
 
 
 if __name__ == "__main__":

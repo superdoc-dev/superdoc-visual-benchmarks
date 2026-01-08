@@ -181,3 +181,4 @@ def get_pdf_page_count(pdf_path: Path) -> int:
     count = len(doc)
     doc.close()
     return count
+

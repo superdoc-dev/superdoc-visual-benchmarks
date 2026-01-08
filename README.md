@@ -16,7 +16,7 @@ Download the latest binary from [Releases](../../releases), then:
 
 ```bash
 chmod +x ~/Downloads/superdoc-benchmark
-./superdoc-benchmark
+sudo mv ~/Downloads/superdoc-benchmark /usr/local/bin/
 ```
 
 **From source:**
@@ -30,13 +30,38 @@ uv run superdoc-benchmark
 
 ## Usage
 
-Run `superdoc-benchmark` to launch the interactive menu:
+> **Note:** If running from source, prefix commands with `uv run` (e.g., `uv run superdoc-benchmark`).
+> The binary from GitHub Releases can be run directly.
 
-1. **Generate Word visual** - Export `.docx` files to PDF via Word, then rasterize to PNGs
-2. **Compare DOCX** - Capture both Word and SuperDoc renders, generate side-by-side comparison reports
-3. **Set SuperDoc version** - Install from npm (`latest`, `next`, or specific version) or use a local repo
+### Interactive Mode
 
-Output is saved to:
+Run with no arguments for the interactive menu:
+
+```bash
+superdoc-benchmark
+```
+
+### CLI Commands
+
+For scripting and automation:
+
+```bash
+# Capture Word visuals
+superdoc-benchmark word ./path/to/docs/
+superdoc-benchmark word ./document.docx --dpi 200 --force
+
+# Compare Word vs SuperDoc
+superdoc-benchmark compare ./path/to/docs/
+
+# Manage SuperDoc version
+superdoc-benchmark version                            # show current
+superdoc-benchmark version set latest                 # install latest from npm
+superdoc-benchmark version set 1.0.0                  # install specific version
+superdoc-benchmark version set --local /path/to/repo  # use local repo
+```
+
+### Output
+
 - `captures/<document>/word/` - Word renders
 - `captures/<document>/superdoc/` - SuperDoc renders
 - `reports/` - Comparison PDFs
