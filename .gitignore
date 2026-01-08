@@ -43,5 +43,6 @@ build/
 .coverage
 htmlcov/
 
-# Artifacts (output from benchmark runs)
-artifacts/
+# Output from benchmark runs
+captures/
+reports/

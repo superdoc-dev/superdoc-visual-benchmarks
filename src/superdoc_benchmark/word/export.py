@@ -134,7 +134,7 @@ def rasterize_pdf(
         pdf_path: Path to the input PDF file.
         out_dir: Directory where PNG images will be saved.
         dpi: Dots per inch for rasterization (72-600, default 144).
-        prefix: Filename prefix for output PNGs (e.g., "page" -> "page-0001.png").
+        prefix: Filename prefix for output PNGs (e.g., "page" -> "page_0001.png").
 
     Returns:
         Number of pages rasterized.
@@ -159,7 +159,7 @@ def rasterize_pdf(
     try:
         for idx, page in enumerate(doc, start=1):
             pix = page.get_pixmap(dpi=dpi, alpha=False)
-            pix.save(out_dir / f"{prefix}-{idx:04d}.png")
+            pix.save(out_dir / f"{prefix}_{idx:04d}.png")
     except Exception as exc:
         raise RuntimeError(f"Failed to rasterize page {idx}: {exc}") from exc
     finally:

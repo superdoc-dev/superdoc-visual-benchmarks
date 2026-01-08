@@ -178,44 +178,114 @@ def get_installed_version() -> str | None:
         return None
 
 
-def validate_local_repo(path: Path) -> tuple[bool, str | None, str | None]:
+def validate_local_repo(path: Path) -> tuple[bool, str | None, Path | None, str | None]:
     """Validate a local SuperDoc repository path.
 
     Args:
         path: Path to the local repository.
 
     Returns:
-        Tuple of (is_valid, version, error_message).
+        Tuple of (is_valid, version, package_path, error_message).
+        package_path is the actual path to the superdoc package (may differ from input for monorepos).
     """
     if not path.exists():
-        return False, None, f"Path does not exist: {path}"
+        return False, None, None, f"Path does not exist: {path}"
 
     if not path.is_dir():
-        return False, None, f"Path is not a directory: {path}"
+        return False, None, None, f"Path is not a directory: {path}"
 
     # Check for package.json in expected locations
     package_json_paths = [
-        path / "packages" / "superdoc" / "package.json",  # Monorepo structure
-        path / "package.json",  # Root package.json
+        (path / "packages" / "superdoc" / "package.json", path / "packages" / "superdoc"),  # Monorepo
+        (path / "package.json", path),  # Root package.json
     ]
 
     version = None
-    for pkg_path in package_json_paths:
-        if pkg_path.exists():
+    package_path = None
+    for pkg_json, pkg_dir in package_json_paths:
+        if pkg_json.exists():
             try:
-                data = json.loads(pkg_path.read_text())
+                data = json.loads(pkg_json.read_text())
                 # Verify it's actually SuperDoc
                 name = data.get("name", "")
-                if "superdoc" in name.lower() or pkg_path.parent.name == "superdoc":
+                if "superdoc" in name.lower() or pkg_dir.name == "superdoc":
                     version = data.get("version")
+                    package_path = pkg_dir
                     break
             except (json.JSONDecodeError, OSError):
                 continue
 
-    if version is None:
-        return False, None, "Could not find SuperDoc package.json in repository"
+    if version is None or package_path is None:
+        return False, None, None, "Could not find SuperDoc package.json in repository"
 
-    return True, version, None
+    return True, version, package_path, None
+
+
+def run_pnpm_build(repo_root: Path, timeout: int = 300) -> None:
+    """Run pnpm build at the repository root.
+
+    Args:
+        repo_root: Path to the repository root.
+        timeout: Timeout in seconds.
+
+    Raises:
+        RuntimeError: If the build fails.
+    """
+    # Check if pnpm is available
+    if shutil.which("pnpm") is None:
+        raise RuntimeError(
+            "pnpm is required for building local SuperDoc. "
+            "Please install pnpm to continue."
+        )
+
+    try:
+        result = subprocess.run(
+            ["pnpm", "run", "build"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=str(repo_root),
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"pnpm run build failed:\n{result.stderr}")
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"pnpm build timed out after {timeout}s") from exc
+    except FileNotFoundError as exc:
+        raise RuntimeError("pnpm not found") from exc
+
+
+def install_superdoc_local(package_path: Path, repo_root: Path | None = None) -> None:
+    """Install SuperDoc from a local path.
+
+    Args:
+        package_path: Path to the superdoc package directory (containing package.json).
+        repo_root: Path to the repository root for running build. If None, uses package_path.
+
+    Raises:
+        RuntimeError: If installation fails.
+    """
+    # Run pnpm build at repo root first
+    build_path = repo_root if repo_root else package_path
+    run_pnpm_build(build_path)
+
+    ensure_npm_available()
+    workspace = ensure_workspace()
+
+    # Remove existing node_modules to force clean install
+    node_modules = workspace / "node_modules"
+    if node_modules.exists():
+        shutil.rmtree(node_modules)
+
+    # Update package.json to use file: protocol
+    package_json_path = workspace / "package.json"
+    if package_json_path.exists():
+        package_data = json.loads(package_json_path.read_text())
+        package_data["dependencies"]["superdoc"] = f"file:{package_path}"
+        package_json_path.write_text(json.dumps(package_data, indent=2))
+
+    # Run npm install
+    run_npm(["install"], cwd=workspace, timeout=600)
 
 
 def get_workspace_path() -> Path:

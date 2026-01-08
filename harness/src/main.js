@@ -148,7 +148,7 @@ const initEditor = (file) => {
     rulers: false,
     disableContextMenu: true,
     modules: {
-      comments: false,
+      comments: true,
       toolbar: false,
       slashMenu: false,
       ai: false,

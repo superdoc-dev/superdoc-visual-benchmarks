@@ -9,32 +9,46 @@ from .export import export_word_pdf, rasterize_pdf, DEFAULT_DPI
 
 console = Console()
 
-# Artifacts folder in current working directory
-ARTIFACTS_DIR = Path.cwd() / "artifacts"
+# Captures folder in current working directory
+CAPTURES_DIR = Path.cwd() / "captures"
 
 
-def get_artifacts_dir() -> Path:
-    """Get the artifacts directory, creating it if needed.
+def get_captures_dir() -> Path:
+    """Get the captures directory, creating it if needed.
 
     Returns:
-        Path to the artifacts directory in the current working directory.
+        Path to the captures directory in the current working directory.
     """
-    ARTIFACTS_DIR.mkdir(exist_ok=True)
-    return ARTIFACTS_DIR
+    CAPTURES_DIR.mkdir(exist_ok=True)
+    return CAPTURES_DIR
 
 
-def get_output_dir(docx_path: Path) -> Path:
-    """Get the output directory for a document's artifacts.
+def get_document_dir(docx_path: Path) -> Path:
+    """Get the document directory for a document's captures.
 
-    Creates an 'artifacts/<docx-stem>' folder in the current working directory.
+    Creates a 'captures/<docx-stem>' folder in the current working directory.
 
     Args:
         docx_path: Path to the .docx file.
 
     Returns:
-        Path to the output directory.
+        Path to the document directory.
     """
-    return get_artifacts_dir() / docx_path.stem
+    return get_captures_dir() / docx_path.stem
+
+
+def get_word_output_dir(docx_path: Path) -> Path:
+    """Get the Word output directory for a document's captures.
+
+    Creates a 'captures/<docx-stem>/word' folder in the current working directory.
+
+    Args:
+        docx_path: Path to the .docx file.
+
+    Returns:
+        Path to the Word output directory.
+    """
+    return get_document_dir(docx_path) / "word"
 
 
 def capture_single_document(
@@ -46,7 +60,7 @@ def capture_single_document(
 
     Args:
         docx_path: Path to the .docx file.
-        output_dir: Optional output directory. If None, uses artifacts/<docx-stem>.
+        output_dir: Optional output directory. If None, uses captures/<docx-stem>/word.
         dpi: DPI for rasterization (default 144).
 
     Returns:
@@ -56,7 +70,7 @@ def capture_single_document(
         RuntimeError: If capture fails at any step.
     """
     if output_dir is None:
-        output_dir = get_output_dir(docx_path)
+        output_dir = get_word_output_dir(docx_path)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -71,7 +85,7 @@ def capture_single_document(
         pdf_path,
         output_dir,
         dpi=dpi,
-        prefix="word-page",
+        prefix="page",
     )
 
     return {
@@ -87,6 +101,7 @@ def capture_word_visuals(
     docx_files: list[Path],
     output_dir: Path | None = None,
     dpi: int = DEFAULT_DPI,
+    force: bool = False,
 ) -> list[dict]:
     """Capture visual renders from Word for the given documents.
 
@@ -97,15 +112,24 @@ def capture_word_visuals(
 
     Args:
         docx_files: List of .docx file paths to process.
-        output_dir: Optional output directory. If None, creates artifacts/
+        output_dir: Optional output directory. If None, creates captures/
                    folder in the current working directory.
         dpi: DPI for rasterization (default 144).
+        force: If True, delete existing captures before re-capturing.
 
     Returns:
         List of result dicts, one per document.
     """
     results = []
     errors = []
+
+    # Delete existing captures if force=True
+    if force:
+        import shutil
+        for docx_path in docx_files:
+            word_dir = get_word_output_dir(docx_path)
+            if word_dir.exists():
+                shutil.rmtree(word_dir)
 
     console.print()
 
