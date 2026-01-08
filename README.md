@@ -85,7 +85,7 @@ superdoc-benchmark version set --local /path/to/repo  # use local repo (requires
 
 ## Output
 
-All outputs are saved to the `reports/` directory:
+All outputs are saved to a `reports/` folder in your current working directory:
 
 ```
 reports/
