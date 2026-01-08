@@ -4,19 +4,27 @@ Visual comparison tool for SuperDoc document rendering. Compares how SuperDoc re
 
 ## Requirements
 
-- macOS (uses AppleScript for Word automation)
-- Microsoft Word
-- Node.js / npm (for SuperDoc installation)
+> **This tool only works on macOS with Microsoft Word installed.**
+
+| Requirement | Why |
+|-------------|-----|
+| **macOS** | Uses AppleScript to automate Word |
+| **Microsoft Word** | Generates the "ground truth" PDF renders |
+| **Node.js / npm** | Installs and runs SuperDoc |
 
 ## Installation
 
 **From GitHub Releases (recommended):**
 
-Download the latest binary from [Releases](../../releases), then:
+Download `superdoc-benchmark-macos.zip` from [Releases](../../releases), then:
 
 ```bash
-chmod +x ~/Downloads/superdoc-benchmark
+# Extract and move to PATH
+unzip ~/Downloads/superdoc-benchmark-macos.zip -d ~/Downloads
 sudo mv ~/Downloads/superdoc-benchmark /usr/local/bin/
+
+# macOS security: remove quarantine attribute
+xattr -d com.apple.quarantine /usr/local/bin/superdoc-benchmark
 ```
 
 **From source:**
@@ -62,9 +70,27 @@ superdoc-benchmark version set --local /path/to/repo  # use local repo
 
 ### Output
 
-- `captures/<document>/word/` - Word renders
-- `captures/<document>/superdoc/` - SuperDoc renders
-- `reports/` - Comparison PDFs
+All outputs are saved to the `reports/` directory:
+
+- `reports/word-captures/<document>/` - Word renders (PDF + page images)
+- `reports/superdoc-captures/<document>-<version>/` - SuperDoc renders
+- `reports/comparisons/<document>/` - Side-by-side comparison PDFs and `score-*.json` files
+
+## How Scoring Works
+
+Each page is compared pixel-by-pixel between Word and SuperDoc renders. The score (0-100) is a weighted combination of:
+
+| Metric | Weight | What it measures |
+|--------|--------|------------------|
+| **SSIM** | 40% | Structural similarity (layout, shapes) |
+| **Ink Match** | 20% | Whether text/graphics appear in the same places |
+| **Edge Match** | 15% | Whether lines and boundaries align |
+| **Color Match** | 15% | Whether colors are accurate |
+| **Blob Penalty** | 10% | Penalizes large missing or extra content |
+
+Before scoring, images are automatically aligned to handle minor position differences. The tool also detects "single issue" pages where only vertical spacing differs (common with fonts) and adjusts scoring accordingly.
+
+**Overall document score** = 70% average + 30% worst page (so one bad page hurts but doesn't ruin everything).
 
 ## Development
 

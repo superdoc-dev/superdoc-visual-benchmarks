@@ -301,15 +301,20 @@ def run_compare(docx_files: list[Path]) -> None:
         for docx_path, result in report_results:
             comparison_path = result["comparison_pdf"]
             diff_path = result["diff_pdf"]
+            score_path = result.get("score_json")
             try:
                 comparison_rel = comparison_path.relative_to(cwd)
                 diff_rel = diff_path.relative_to(cwd)
+                score_rel = score_path.relative_to(cwd) if score_path else None
             except ValueError:
                 comparison_rel = comparison_path
                 diff_rel = diff_path
+                score_rel = score_path
             console.print(f"  [dim]•[/dim] {docx_path.name}:")
             console.print(f"      comparison: [cyan]./{comparison_rel}[/cyan]")
             console.print(f"      diff: [cyan]./{diff_rel}[/cyan]")
+            if score_rel:
+                console.print(f"      score: [cyan]./{score_rel}[/cyan]")
 
     if report_errors:
         console.print(f"\n[red]Failed to generate reports for {len(report_errors)} document(s)[/red]")

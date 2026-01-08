@@ -74,7 +74,15 @@ def run_npm(args: list[str], cwd: Path, timeout: int = 600) -> None:
             check=False,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"npm {' '.join(args)} failed:\n{result.stderr}")
+            # Include both stdout and stderr for full error context
+            error_output = ""
+            if result.stdout:
+                error_output += result.stdout
+            if result.stderr:
+                error_output += result.stderr
+            if not error_output:
+                error_output = f"Exit code {result.returncode}"
+            raise RuntimeError(f"npm {' '.join(args)} failed:\n{error_output}")
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"npm command timed out after {timeout}s") from exc
     except FileNotFoundError as exc:
@@ -248,7 +256,15 @@ def run_pnpm_build(repo_root: Path, timeout: int = 300) -> None:
             check=False,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"pnpm run build failed:\n{result.stderr}")
+            # Include both stdout and stderr for full error context
+            error_output = ""
+            if result.stdout:
+                error_output += result.stdout
+            if result.stderr:
+                error_output += result.stderr
+            if not error_output:
+                error_output = f"Exit code {result.returncode}"
+            raise RuntimeError(f"pnpm run build failed:\n{error_output}")
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"pnpm build timed out after {timeout}s") from exc
     except FileNotFoundError as exc:

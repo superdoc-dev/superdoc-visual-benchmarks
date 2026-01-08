@@ -43,6 +43,9 @@ build/
 .coverage
 htmlcov/
 
+# Environment files (never commit secrets)
+.env
+.env.*
+
 # Output from benchmark runs
-captures/
 reports/

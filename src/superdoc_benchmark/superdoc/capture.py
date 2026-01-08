@@ -120,14 +120,14 @@ def get_superdoc_output_dir(docx_path: Path, version_label: str | None = None) -
         version_label: Optional version label. If None, uses current config.
 
     Returns:
-        Path to captures/<docx-stem>/superdoc-<version>/
+        Path to reports/superdoc-captures/<docx-stem>-<version>/
     """
-    from superdoc_benchmark.word.capture import get_document_dir
+    from superdoc_benchmark.word.capture import get_reports_dir
 
     if version_label is None:
         version_label = get_superdoc_version_label()
 
-    return get_document_dir(docx_path) / f"superdoc-{version_label}"
+    return get_reports_dir() / "superdoc-captures" / f"{docx_path.stem}-{version_label}"
 
 
 def capture_superdoc_pages(

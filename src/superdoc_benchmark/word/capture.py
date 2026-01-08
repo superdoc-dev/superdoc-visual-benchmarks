@@ -9,38 +9,24 @@ from .export import export_word_pdf, rasterize_pdf, DEFAULT_DPI
 
 console = Console()
 
-# Captures folder in current working directory
-CAPTURES_DIR = Path.cwd() / "captures"
+# Reports folder in current working directory
+REPORTS_DIR = Path.cwd() / "reports"
 
 
-def get_captures_dir() -> Path:
-    """Get the captures directory, creating it if needed.
-
-    Returns:
-        Path to the captures directory in the current working directory.
-    """
-    CAPTURES_DIR.mkdir(exist_ok=True)
-    return CAPTURES_DIR
-
-
-def get_document_dir(docx_path: Path) -> Path:
-    """Get the document directory for a document's captures.
-
-    Creates a 'captures/<docx-stem>' folder in the current working directory.
-
-    Args:
-        docx_path: Path to the .docx file.
+def get_reports_dir() -> Path:
+    """Get the reports directory, creating it if needed.
 
     Returns:
-        Path to the document directory.
+        Path to the reports directory in the current working directory.
     """
-    return get_captures_dir() / docx_path.stem
+    REPORTS_DIR.mkdir(exist_ok=True)
+    return REPORTS_DIR
 
 
 def get_word_output_dir(docx_path: Path) -> Path:
     """Get the Word output directory for a document's captures.
 
-    Creates a 'captures/<docx-stem>/word' folder in the current working directory.
+    Creates a 'reports/word-captures/<docx-stem>' folder in the current working directory.
 
     Args:
         docx_path: Path to the .docx file.
@@ -48,7 +34,7 @@ def get_word_output_dir(docx_path: Path) -> Path:
     Returns:
         Path to the Word output directory.
     """
-    return get_document_dir(docx_path) / "word"
+    return get_reports_dir() / "word-captures" / docx_path.stem
 
 
 def capture_single_document(
@@ -60,7 +46,7 @@ def capture_single_document(
 
     Args:
         docx_path: Path to the .docx file.
-        output_dir: Optional output directory. If None, uses captures/<docx-stem>/word.
+        output_dir: Optional output directory. If None, uses reports/word-captures/<docx-stem>.
         dpi: DPI for rasterization (default 144).
 
     Returns:

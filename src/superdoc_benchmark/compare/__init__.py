@@ -13,6 +13,12 @@ from .report import (
     get_reports_dir,
     get_report_dir,
 )
+from .score import (
+    ScoreConfig,
+    ScoreWeights,
+    format_score_text,
+    score_document,
+)
 
 __all__ = [
     # Diff
@@ -26,4 +32,9 @@ __all__ = [
     "generate_diff_pdf",
     "get_reports_dir",
     "get_report_dir",
+    # Score
+    "ScoreConfig",
+    "ScoreWeights",
+    "format_score_text",
+    "score_document",
 ]

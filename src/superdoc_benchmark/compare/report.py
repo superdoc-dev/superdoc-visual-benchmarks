@@ -1,12 +1,15 @@
 """PDF report generation for visual comparisons."""
 
 import io
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import fitz  # PyMuPDF
 from PIL import Image
 
 from .diff import build_diff_overlay
+from .score import score_document
 
 # Reports folder in current working directory
 REPORTS_DIR = Path.cwd() / "reports"
@@ -22,6 +25,17 @@ def get_reports_dir() -> Path:
     return REPORTS_DIR
 
 
+def get_comparisons_dir() -> Path:
+    """Get the comparisons directory, creating it if needed.
+
+    Returns:
+        Path to reports/comparisons/
+    """
+    comparisons_dir = get_reports_dir() / "comparisons"
+    comparisons_dir.mkdir(exist_ok=True)
+    return comparisons_dir
+
+
 def get_report_dir(docx_name: str) -> Path:
     """Get the report directory for a document.
 
@@ -29,9 +43,9 @@ def get_report_dir(docx_name: str) -> Path:
         docx_name: Name of the document (stem).
 
     Returns:
-        Path to reports/<docx_name>/
+        Path to reports/comparisons/<docx_name>/
     """
-    return get_reports_dir() / docx_name
+    return get_comparisons_dir() / docx_name
 
 
 def create_side_by_side(
@@ -199,9 +213,70 @@ def generate_reports(
     diff_path = report_dir / f"diff-{version_label}.pdf"
     generate_diff_pdf(word_pages, superdoc_pages, diff_path)
 
+    # Generate scoring files
+    try:
+        score_data = score_document(word_pages, superdoc_pages)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to score document: {exc}") from exc
+
+    score_json_path = report_dir / f"score-{version_label}.json"
+    score_json_path.write_text(
+        json.dumps(score_data, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    report_by_version_path = _update_report_by_version(report_dir, docx_name)
+
     return {
         "comparison_pdf": comparison_path,
         "diff_pdf": diff_path,
+        "score_json": score_json_path,
+        "report_by_version": report_by_version_path,
         "word_pages": len(word_pages),
         "superdoc_pages": len(superdoc_pages),
     }
+
+
+def _update_report_by_version(report_dir: Path, docx_name: str) -> Path:
+    score_files = sorted(
+        report_dir.glob("score-*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+
+    entries = []
+    for score_path in score_files:
+        version = score_path.stem.removeprefix("score-")
+        mtime = score_path.stat().st_mtime
+        generated_at = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+        try:
+            data = json.loads(score_path.read_text(encoding="utf-8"))
+            entry = {
+                "version": version,
+                "score_file": score_path.name,
+                "generated_at": generated_at,
+                "mtime_epoch": mtime,
+                "score": data,
+            }
+        except Exception as exc:
+            entry = {
+                "version": version,
+                "score_file": score_path.name,
+                "generated_at": generated_at,
+                "mtime_epoch": mtime,
+                "error": str(exc),
+            }
+        entries.append(entry)
+
+    report_data = {
+        "document": docx_name,
+        "updated_at": datetime.now(tz=timezone.utc).isoformat(),
+        "scores": entries,
+    }
+
+    report_path = report_dir / "report-by-version.json"
+    report_path.write_text(
+        json.dumps(report_data, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return report_path
