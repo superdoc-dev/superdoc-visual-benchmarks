@@ -65,6 +65,9 @@ PAGE_TIMEOUT_MS = 30000
 PAGE_SETTLE_MS = 300
 PAGE_DELAY_MS = 100
 
+# Parallel capture settings
+MAX_PARALLEL_BROWSERS = 4  # Cap to avoid memory issues (~150MB per browser)
+
 # Ready state scripts
 READY_SCRIPT = "() => window.__superdocBenchmarkHarness === true"
 LAYOUT_READY_SCRIPT = """() => {
@@ -263,6 +266,36 @@ def capture_single_document(
     }
 
 
+def _capture_single_doc_worker(
+    docx_path: Path,
+    harness_url: str,
+    output_dir: Path,
+    headless: bool,
+) -> dict:
+    """Worker function for parallel capture.
+
+    Each worker launches its own browser instance.
+    This is a module-level function so it works with ThreadPoolExecutor.
+
+    Returns:
+        Dict with docx_path, output_dir, page_count on success.
+
+    Raises:
+        Exception on failure.
+    """
+    page_count = capture_superdoc_pages(
+        docx_path=docx_path,
+        harness_url=harness_url,
+        output_dir=output_dir,
+        headless=headless,
+    )
+    return {
+        "docx_path": docx_path,
+        "output_dir": output_dir,
+        "page_count": page_count,
+    }
+
+
 def capture_superdoc_visuals(
     docx_files: list[Path],
     output_dir: Path | None = None,
@@ -271,6 +304,7 @@ def capture_superdoc_visuals(
     """Capture SuperDoc screenshots for multiple documents.
 
     Starts the Vite server once and captures all documents.
+    Uses parallel browser instances for multiple files.
 
     Args:
         docx_files: List of .docx file paths.
@@ -280,6 +314,7 @@ def capture_superdoc_visuals(
     Returns:
         List of result dicts.
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
@@ -291,6 +326,9 @@ def capture_superdoc_visuals(
     ensure_playwright_browsers()
 
     console.print()
+
+    # Determine parallelism level
+    max_workers = min(len(docx_files), MAX_PARALLEL_BROWSERS) if len(docx_files) > 1 else 1
 
     with ViteServer() as server:
         with Progress(
@@ -304,34 +342,73 @@ def capture_superdoc_visuals(
                 "[cyan]Capturing SuperDoc renders...", total=len(docx_files)
             )
 
-            for docx_path in docx_files:
+            if max_workers == 1:
+                # Sequential for single file
+                for docx_path in docx_files:
+                    progress.update(
+                        overall_task,
+                        description=f"[cyan]Capturing: [white]{docx_path.name}",
+                    )
+
+                    try:
+                        doc_output_dir = output_dir
+                        if doc_output_dir is None:
+                            doc_output_dir = get_superdoc_output_dir(docx_path)
+
+                        page_count = capture_superdoc_pages(
+                            docx_path=docx_path,
+                            harness_url=server.url,
+                            output_dir=doc_output_dir,
+                            headless=headless,
+                        )
+
+                        results.append({
+                            "docx_path": docx_path,
+                            "output_dir": doc_output_dir,
+                            "page_count": page_count,
+                        })
+                    except Exception as exc:
+                        errors.append((docx_path, str(exc)))
+                        console.print(f"  [red]Error:[/red] {docx_path.name}: {exc}")
+
+                    progress.advance(overall_task)
+            else:
+                # Parallel capture with multiple browsers
                 progress.update(
                     overall_task,
-                    description=f"[cyan]Capturing: [white]{docx_path.name}",
+                    description=f"[cyan]Capturing SuperDoc renders ({max_workers} browsers)...",
                 )
 
-                try:
+                # Prepare arguments
+                capture_args = []
+                for docx_path in docx_files:
                     doc_output_dir = output_dir
                     if doc_output_dir is None:
                         doc_output_dir = get_superdoc_output_dir(docx_path)
+                    capture_args.append((docx_path, server.url, doc_output_dir, headless))
 
-                    page_count = capture_superdoc_pages(
-                        docx_path=docx_path,
-                        harness_url=server.url,
-                        output_dir=doc_output_dir,
-                        headless=headless,
-                    )
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    future_to_path = {
+                        executor.submit(
+                            _capture_single_doc_worker,
+                            docx_path,
+                            harness_url,
+                            doc_output_dir,
+                            headless,
+                        ): docx_path
+                        for docx_path, harness_url, doc_output_dir, headless in capture_args
+                    }
 
-                    results.append({
-                        "docx_path": docx_path,
-                        "output_dir": doc_output_dir,
-                        "page_count": page_count,
-                    })
-                except Exception as exc:
-                    errors.append((docx_path, str(exc)))
-                    console.print(f"  [red]Error:[/red] {docx_path.name}: {exc}")
+                    for future in as_completed(future_to_path):
+                        docx_path = future_to_path[future]
+                        try:
+                            result = future.result()
+                            results.append(result)
+                        except Exception as exc:
+                            errors.append((docx_path, str(exc)))
+                            console.print(f"  [red]Error:[/red] {docx_path.name}: {exc}")
 
-                progress.advance(overall_task)
+                        progress.advance(overall_task)
 
     # Summary
     console.print()

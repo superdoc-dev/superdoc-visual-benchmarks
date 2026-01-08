@@ -124,6 +124,9 @@ def handle_generate_word_visual() -> None:
     except KeyboardInterrupt:
         path_str = None
 
+    if path_str:
+        path_str = path_str.strip()
+
     if not path_str:
         console.print("[dim]Cancelled[/dim]\n")
         return
@@ -197,6 +200,9 @@ def handle_compare_docx() -> None:
         ).execute()
     except KeyboardInterrupt:
         path_str = None
+
+    if path_str:
+        path_str = path_str.strip()
 
     if not path_str:
         console.print("[dim]Cancelled[/dim]\n")
@@ -593,6 +599,9 @@ def handle_set_superdoc_version() -> None:
             ).execute()
         except KeyboardInterrupt:
             path_str = None
+
+        if path_str:
+            path_str = path_str.strip()
 
         if not path_str:
             console.print("[dim]Cancelled[/dim]\n")
