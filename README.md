@@ -21,8 +21,7 @@ Download `superdoc-benchmark-macos.zip` from [Releases](../../releases), then:
 
 ```bash
 # Extract and move to PATH
-unzip ~/Downloads/superdoc-benchmark-macos.zip -d ~/Downloads
-sudo mv ~/Downloads/superdoc-benchmark /usr/local/bin/
+sudo unzip ~/Downloads/superdoc-benchmark-macos.zip -d /usr/local/bin/
 
 # macOS security: remove quarantine attribute
 xattr -d com.apple.quarantine /usr/local/bin/superdoc-benchmark
@@ -81,6 +80,9 @@ superdoc-benchmark version set latest                 # install latest from npm
 superdoc-benchmark version set next                   # install next (pre-release) from npm
 superdoc-benchmark version set 1.0.0                  # install specific version
 superdoc-benchmark version set --local /path/to/repo  # use local repo (requires pnpm)
+
+# Clean up
+superdoc-benchmark uninstall                           # remove all cached data
 ```
 
 ## Output
