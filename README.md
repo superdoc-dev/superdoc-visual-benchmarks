@@ -21,7 +21,8 @@ Download `superdoc-benchmark-macos.zip` from [Releases](../../releases), then:
 
 ```bash
 # Extract and move to PATH
-sudo unzip ~/Downloads/superdoc-benchmark-macos.zip -d /usr/local/bin/
+unzip ~/Downloads/superdoc-benchmark-macos.zip -d ~/Downloads
+sudo mv ~/Downloads/dist/superdoc-benchmark /usr/local/bin/
 
 # macOS security: remove quarantine attribute
 xattr -d com.apple.quarantine /usr/local/bin/superdoc-benchmark
