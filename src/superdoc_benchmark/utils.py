@@ -33,6 +33,9 @@ def find_docx_files(path: Path) -> list[Path]:
 def validate_path(path_str: str) -> Path | None:
     """Validate and resolve a path string.
 
+    Handles shell-escaped paths (e.g., spaces as '\\ ') that users may
+    copy from terminal or get from tab-completion.
+
     Args:
         path_str: Path string from user input.
 
@@ -42,7 +45,11 @@ def validate_path(path_str: str) -> Path | None:
     if not path_str.strip():
         return None
 
-    path = Path(path_str).expanduser().resolve()
+    # Remove shell escape characters (backslash before space, parens, etc.)
+    # This handles paths like: /path/to/My\ File\ \(1\).docx
+    unescaped = re.sub(r"\\(.)", r"\1", path_str.strip())
+
+    path = Path(unescaped).expanduser().resolve()
 
     if not path.exists():
         return None
