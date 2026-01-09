@@ -723,6 +723,66 @@ def cmd_compare(
     run_compare(docx_files)
 
 
+@app.command("uninstall")
+def cmd_uninstall(
+    remove_outputs: bool = typer.Option(
+        False,
+        "--remove-outputs",
+        help="Also remove captures/ and reports/ in the current directory",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Skip confirmation prompt",
+    ),
+) -> None:
+    """Remove local SuperDoc Benchmark data and caches."""
+    import shutil
+
+    from superdoc_benchmark.superdoc.config import CONFIG_DIR
+
+    targets = [
+        CONFIG_DIR,
+        Path.home() / "Library" / "Caches" / "ms-playwright",
+    ]
+    if remove_outputs:
+        targets.extend([Path.cwd() / "captures", Path.cwd() / "reports"])
+
+    existing = [path for path in targets if path.exists()]
+    if not existing:
+        console.print("[dim]Nothing to remove.[/dim]")
+        return
+
+    console.print("[bold]This will remove:[/bold]")
+    for path in existing:
+        console.print(f"  [dim]•[/dim] {path}")
+
+    if not yes and not typer.confirm("Proceed?"):
+        console.print("[dim]Cancelled[/dim]")
+        return
+
+    errors = []
+    for path in existing:
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        except Exception as exc:
+            errors.append((path, str(exc)))
+
+    if errors:
+        console.print("[red]Some paths could not be removed:[/red]")
+        for path, err in errors:
+            console.print(f"  [dim]•[/dim] {path}: {err}")
+        raise typer.Exit(1)
+
+    console.print("[green]Cleanup complete.[/green]")
+    if not remove_outputs:
+        console.print("[dim]Note: captures/ and reports/ were not removed.[/dim]")
+
+
 # Version subcommand group
 version_app = typer.Typer(help="Manage SuperDoc version")
 app.add_typer(version_app, name="version")
