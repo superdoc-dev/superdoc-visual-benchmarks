@@ -233,9 +233,10 @@ def _generate_report_task(
     This is a module-level function so it can be pickled for ProcessPoolExecutor.
     """
     from superdoc_benchmark.compare import generate_reports
+    from superdoc_benchmark.utils import make_docx_output_name
 
     return generate_reports(
-        docx_name=docx_path.stem,
+        docx_name=make_docx_output_name(docx_path),
         word_dir=word_dir,
         superdoc_dir=superdoc_dir,
         version_label=version_label,
@@ -255,6 +256,7 @@ def run_compare(docx_files: list[Path]) -> None:
     )
     from superdoc_benchmark.superdoc.config import get_config
     from superdoc_benchmark.compare import generate_reports
+    from superdoc_benchmark.utils import make_docx_output_name
 
     version_label = get_superdoc_version_label()
     config = get_config()
@@ -363,7 +365,7 @@ def run_compare(docx_files: list[Path]) -> None:
                 )
                 try:
                     result = generate_reports(
-                        docx_name=docx_path.stem,
+                        docx_name=make_docx_output_name(docx_path),
                         word_dir=word_dir,
                         superdoc_dir=superdoc_dir,
                         version_label=ver_label,

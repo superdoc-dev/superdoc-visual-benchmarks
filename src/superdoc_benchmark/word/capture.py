@@ -34,7 +34,9 @@ def get_word_output_dir(docx_path: Path) -> Path:
     Returns:
         Path to the Word output directory.
     """
-    return get_reports_dir() / "word-captures" / docx_path.stem
+    from superdoc_benchmark.utils import make_docx_output_name
+
+    return get_reports_dir() / "word-captures" / make_docx_output_name(docx_path)
 
 
 def capture_single_document(

@@ -166,11 +166,13 @@ def get_superdoc_output_dir(docx_path: Path, version_label: str | None = None) -
         Path to reports/superdoc-captures/<docx-stem>-<version>/
     """
     from superdoc_benchmark.word.capture import get_reports_dir
+    from superdoc_benchmark.utils import make_docx_output_name
 
     if version_label is None:
         version_label = get_superdoc_version_label()
 
-    return get_reports_dir() / "superdoc-captures" / f"{docx_path.stem}-{version_label}"
+    output_name = make_docx_output_name(docx_path)
+    return get_reports_dir() / "superdoc-captures" / f"{output_name}-{version_label}"
 
 
 def capture_superdoc_pages(
