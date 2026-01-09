@@ -48,6 +48,7 @@ def ensure_playwright_browsers() -> None:
     env = os.environ.copy()
     env["PLAYWRIGHT_BROWSERS_PATH"] = str(_BROWSERS_PATH)
 
+    install_timeout = 1800
     try:
         if _is_bundled():
             # Running from PyInstaller binary - use npx (requires Node.js)
@@ -55,9 +56,7 @@ def ensure_playwright_browsers() -> None:
             if npx_path:
                 result = subprocess.run(
                     [npx_path, "playwright", "install", "chromium"],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
+                    timeout=install_timeout,
                     env=env,
                 )
             else:
@@ -71,18 +70,18 @@ def ensure_playwright_browsers() -> None:
             # Running from source - use Python module
             result = subprocess.run(
                 [sys.executable, "-m", "playwright", "install", "chromium"],
-                capture_output=True,
-                text=True,
-                timeout=300,
+                timeout=install_timeout,
                 env=env,
             )
 
         if result.returncode != 0:
-            error_msg = result.stderr or result.stdout or "Unknown error"
-            raise RuntimeError(f"Failed to install browser: {error_msg}")
+            raise RuntimeError(
+                f"Failed to install browser (exit code {result.returncode}). "
+                "See output above for details."
+            )
         console.print("[green]Browser installed successfully![/green]\n")
     except subprocess.TimeoutExpired:
-        raise RuntimeError("Browser installation timed out")
+        raise RuntimeError(f"Browser installation timed out after {install_timeout}s")
     except FileNotFoundError as e:
         raise RuntimeError(f"Could not run browser installer: {e}")
 
