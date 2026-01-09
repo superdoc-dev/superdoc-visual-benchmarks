@@ -17,9 +17,16 @@ Visual comparison tool for SuperDoc document rendering. Compares how SuperDoc re
 
 ### From GitHub Releases (recommended)
 
-Download the latest `.pkg` installer from [Releases](../../releases), then double-click to install. The installer places `superdoc-benchmark` in `/usr/local/bin/`.
+Download `superdoc-benchmark-macos.zip` from [Releases](../../releases), then:
 
-The package is signed and notarized by Apple, so no security warnings should appear.
+```bash
+# Extract and move to PATH
+unzip ~/Downloads/superdoc-benchmark-macos.zip -d ~/Downloads
+sudo mv ~/Downloads/superdoc-benchmark /usr/local/bin/
+
+# macOS security: remove quarantine attribute
+xattr -d com.apple.quarantine /usr/local/bin/superdoc-benchmark
+```
 
 On first run, the app will automatically install the Playwright browser. If that fails, install manually:
 
@@ -78,7 +85,7 @@ superdoc-benchmark version set --local /path/to/repo  # use local repo (requires
 
 ## Output
 
-All outputs are saved to a `reports/` folder in your current working directory:
+All outputs are saved to the `reports/` directory:
 
 ```
 reports/
@@ -134,11 +141,7 @@ uv run pyinstaller superdoc-benchmark.spec
 **Release:**
 
 ```bash
-# Set signing identities (find yours with: security find-identity -v -p codesigning)
-export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAM_ID)"
-export APPLE_INSTALLER_SIGNING_IDENTITY="Developer ID Installer: Your Name (TEAM_ID)"
-
-./scripts/release.sh 0.2.0
+./scripts/release.sh 0.1.0
 ```
 
 ## License
