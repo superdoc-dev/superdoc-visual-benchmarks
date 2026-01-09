@@ -1,5 +1,6 @@
 """Word document export and PDF rasterization utilities."""
 
+import re
 import shutil
 import subprocess
 import sys
@@ -7,6 +8,20 @@ import tempfile
 from pathlib import Path
 
 import fitz  # PyMuPDF
+
+
+def _sanitize_filename(name: str) -> str:
+    """Sanitize a filename to be safe for filesystem and AppleScript.
+
+    Args:
+        name: Original filename (without extension).
+
+    Returns:
+        Sanitized filename with special characters replaced.
+    """
+    # Replace any non-alphanumeric characters (except . _ -) with underscore
+    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+    return sanitized.strip("_") or "document"
 
 DPI_MIN = 72
 DPI_MAX = 600
@@ -96,8 +111,10 @@ def export_word_pdf(docx_path: Path, pdf_path: Path) -> None:
     # Word always has full access to its own container
     WORD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-    temp_docx = WORD_TEMP_DIR / docx_path.name
-    temp_pdf = WORD_TEMP_DIR / f"{docx_path.stem}.pdf"
+    # Sanitize filename to avoid issues with spaces/special characters in AppleScript
+    safe_stem = _sanitize_filename(docx_path.stem)
+    temp_docx = WORD_TEMP_DIR / f"{safe_stem}.docx"
+    temp_pdf = WORD_TEMP_DIR / f"{safe_stem}.pdf"
 
     try:
         # Copy docx to Word's container
