@@ -717,7 +717,12 @@ def handle_check_updates() -> None:
         return
 
     if compare_versions(latest, __version__) <= 0:
-        console.print("[dim]You are on the latest version.[/dim]\n")
+        if latest != __version__:
+            console.print(
+                f"[dim]Latest on npm: {latest} (current: {__version__}).[/dim]\n"
+            )
+        else:
+            console.print("[dim]You are on the latest version.[/dim]\n")
         return
 
     console.print(

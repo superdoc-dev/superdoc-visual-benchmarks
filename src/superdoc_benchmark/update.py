@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -15,11 +16,28 @@ PACKAGE_NAME = "@superdoc-dev/visual-benchmarks"
 CHECK_INTERVAL_S = 24 * 60 * 60
 UPDATE_CHECK_FILE = CONFIG_DIR / "update-check.json"
 
-_SEMVER_RE = re.compile(r"^(\\d+)\\.(\\d+)\\.(\\d+)(?:-([0-9A-Za-z.-]+))?$")
+_SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
+_SEMVER_EXTRACT_RE = re.compile(r"(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)")
+
+
+def _normalize_version(version: str | None) -> str | None:
+    if not version:
+        return None
+    normalized = version.strip()
+    if normalized.startswith("v"):
+        normalized = normalized[1:]
+    normalized = normalized.split("+", 1)[0]
+    if _SEMVER_RE.match(normalized):
+        return normalized
+    match = _SEMVER_EXTRACT_RE.search(normalized)
+    return match.group(1) if match else None
 
 
 def _parse_version(version: str) -> tuple[int, int, int, list[tuple[int, object]] | None] | None:
-    match = _SEMVER_RE.match(version)
+    normalized = _normalize_version(version)
+    if not normalized:
+        return None
+    match = _SEMVER_RE.match(normalized)
     if not match:
         return None
     major, minor, patch = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
@@ -73,7 +91,11 @@ def compare_versions(a: str, b: str) -> int:
 def _read_cache() -> tuple[float | None, str | None]:
     try:
         data = json.loads(UPDATE_CHECK_FILE.read_text())
-        return float(data.get("last_check", 0)), data.get("latest_version")
+        last_check = data.get("last_check", data.get("lastCheck"))
+        latest_version = data.get("latest_version", data.get("latestVersion"))
+        if last_check is None:
+            return None, latest_version
+        return float(last_check), latest_version
     except (OSError, ValueError, json.JSONDecodeError):
         return None, None
 
@@ -81,9 +103,15 @@ def _read_cache() -> tuple[float | None, str | None]:
 def _write_cache(latest_version: str) -> None:
     try:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        timestamp = time.time()
         UPDATE_CHECK_FILE.write_text(
             json.dumps(
-                {"last_check": time.time(), "latest_version": latest_version},
+                {
+                    "last_check": timestamp,
+                    "latest_version": latest_version,
+                    "lastCheck": timestamp,
+                    "latestVersion": latest_version,
+                },
                 indent=2,
             )
         )
@@ -108,6 +136,7 @@ def get_latest_version() -> str | None:
             capture_output=True,
             text=True,
             timeout=30,
+            env={**os.environ, "NPM_CONFIG_LOGLEVEL": "error"},
             check=False,
         )
         if result.returncode != 0:
@@ -119,7 +148,19 @@ def get_latest_version() -> str | None:
             version = json.loads(output)
         except json.JSONDecodeError:
             version = output.strip('"')
-        return version if isinstance(version, str) and version else None
+        if isinstance(version, str):
+            return _normalize_version(version)
+        if isinstance(version, list):
+            for item in reversed(version):
+                normalized = _normalize_version(str(item))
+                if normalized:
+                    return normalized
+            return None
+        if isinstance(version, dict):
+            normalized = _normalize_version(str(version.get("latest", "")))
+            if normalized:
+                return normalized
+        return _normalize_version(output)
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return None
 
