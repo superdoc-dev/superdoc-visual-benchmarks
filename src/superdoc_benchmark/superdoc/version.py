@@ -255,6 +255,7 @@ def install_superdoc_version(version: str) -> str:
 
     # Run npm install to get all dependencies including superdoc
     run_npm(["install"], cwd=workspace, timeout=600)
+    validate_installed_superdoc(workspace)
 
     return resolved_version
 
@@ -276,6 +277,70 @@ def get_installed_version() -> str | None:
         return data.get("version")
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def _collect_export_paths(exports: object, paths: set[str]) -> None:
+    if isinstance(exports, str):
+        if exports.startswith("."):
+            paths.add(exports)
+        return
+    if isinstance(exports, dict):
+        for value in exports.values():
+            _collect_export_paths(value, paths)
+        return
+    if isinstance(exports, list):
+        for value in exports:
+            _collect_export_paths(value, paths)
+
+
+def validate_installed_superdoc(workspace: Path | None = None) -> None:
+    """Validate that the installed SuperDoc package has its entrypoints present."""
+    workspace = workspace or WORKSPACE_DIR
+    package_root = workspace / "node_modules" / "superdoc"
+    package_json = package_root / "package.json"
+
+    if not package_json.exists():
+        raise RuntimeError(
+            f"SuperDoc package not found after install (missing {package_json})."
+        )
+
+    try:
+        data = json.loads(package_json.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        raise RuntimeError(
+            f"Failed to read installed SuperDoc package.json: {exc}"
+        ) from exc
+
+    candidates: list[tuple[str, str]] = []
+    for field in ("main", "module", "browser", "types", "typings"):
+        value = data.get(field)
+        if isinstance(value, str):
+            candidates.append((field, value))
+
+    export_paths: set[str] = set()
+    _collect_export_paths(data.get("exports"), export_paths)
+    for value in sorted(export_paths):
+        if "*" in value:
+            continue
+        candidates.append(("exports", value))
+
+    missing: list[str] = []
+    ignored_prefixes = ("http:", "https:", "node:", "data:")
+    for field, rel_path in candidates:
+        if rel_path.startswith(ignored_prefixes):
+            continue
+        target_path = Path(rel_path)
+        target = target_path if target_path.is_absolute() else package_root / rel_path
+        if not target.exists():
+            missing.append(f"{field}: {rel_path}")
+
+    if missing:
+        details = "\n".join(missing[:20])
+        raise RuntimeError(
+            "SuperDoc package appears incomplete after install. "
+            "The build may have failed. Missing entrypoints:\n"
+            f"{details}"
+        )
 
 
 def validate_local_repo(path: Path) -> tuple[bool, str | None, Path | None, str | None]:
@@ -394,6 +459,7 @@ def install_superdoc_local(package_path: Path, repo_root: Path | None = None) ->
 
     # Run npm install
     run_npm(["install"], cwd=workspace, timeout=600)
+    validate_installed_superdoc(workspace)
 
 
 def get_workspace_path() -> Path:

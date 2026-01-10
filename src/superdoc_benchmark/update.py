@@ -15,6 +15,7 @@ from superdoc_benchmark.superdoc.config import CONFIG_DIR
 PACKAGE_NAME = "@superdoc-dev/visual-benchmarks"
 CHECK_INTERVAL_S = 24 * 60 * 60
 UPDATE_CHECK_FILE = CONFIG_DIR / "update-check.json"
+UPDATE_TIMEOUT_S = 600
 
 _SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
 _SEMVER_EXTRACT_RE = re.compile(r"(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)")
@@ -181,9 +182,23 @@ def run_update() -> None:
     npm_path = shutil.which("npm")
     if not npm_path:
         raise RuntimeError("npm is not available. Please install Node.js.")
-    result = subprocess.run(
-        [npm_path, "update", "-g", PACKAGE_NAME],
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError("npm update failed")
+    try:
+        result = subprocess.run(
+            [npm_path, "update", "-g", PACKAGE_NAME],
+            capture_output=True,
+            text=True,
+            timeout=UPDATE_TIMEOUT_S,
+            env={**os.environ, "NPM_CONFIG_LOGLEVEL": "error"},
+            check=False,
+        )
+        if result.returncode != 0:
+            error_output = ""
+            if result.stdout:
+                error_output += result.stdout
+            if result.stderr:
+                error_output += result.stderr
+            if not error_output:
+                error_output = f"Exit code {result.returncode}"
+            raise RuntimeError(f"npm update failed:\n{error_output}")
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"npm update timed out after {UPDATE_TIMEOUT_S}s") from exc

@@ -213,11 +213,64 @@ def capture_superdoc_pages(
         )
         page.set_default_timeout(timeout_ms)
 
+        console_messages: list[str] = []
+        page_errors: list[str] = []
+
+        def _append_limited(target: list[str], entry: str, limit: int = 50) -> None:
+            if len(target) >= limit:
+                target.pop(0)
+            target.append(entry)
+
+        def _on_console(msg) -> None:
+            try:
+                entry = f"[{msg.type()}] {msg.text()}"
+            except Exception:
+                entry = "[console] <unavailable>"
+            _append_limited(console_messages, entry)
+
+        def _on_pageerror(error) -> None:
+            _append_limited(page_errors, str(error))
+
+        page.on("console", _on_console)
+        page.on("pageerror", _on_pageerror)
+
+        def _format_debug_context(stage: str) -> str:
+            parts = [f"Stage: {stage}", f"Document: {docx_path}"]
+            try:
+                state = page.evaluate(
+                    """() => ({
+                        url: window.location?.href ?? null,
+                        ready: window.__superdocReady ?? null,
+                        layoutStable: window.__superdocLayoutStable ?? null,
+                        fontsReady: window.__superdocFontsReady ?? null,
+                        layoutVersion: window.__superdocLayoutVersion ?? null,
+                        layoutUpdatedAt: window.__superdocLayoutUpdatedAt ?? null,
+                        statusText: document.querySelector("#status")?.textContent ?? null,
+                        pageCount: document.querySelectorAll(".superdoc-page").length,
+                    })"""
+                )
+                parts.append(f"Harness state: {state}")
+            except Exception as exc:
+                parts.append(f"Harness state: <unavailable> ({exc})")
+            if page_errors:
+                parts.append("Page errors:")
+                parts.extend(page_errors[-12:])
+            if console_messages:
+                parts.append("Console (last 20):")
+                parts.extend(console_messages[-20:])
+            return "\n".join(parts)
+
         # Navigate to harness
         page.goto(harness_url, wait_until="commit")
 
         # Wait for harness to be ready
-        page.wait_for_function(READY_SCRIPT)
+        try:
+            page.wait_for_function(READY_SCRIPT)
+        except PlaywrightTimeoutError as exc:
+            debug = _format_debug_context("wait_for_function READY_SCRIPT")
+            raise RuntimeError(
+                f"Timed out waiting for harness readiness.\n{debug}"
+            ) from exc
 
         # Hide UI elements
         page.add_style_tag(content=build_hide_css(HIDE_SELECTORS))
@@ -233,7 +286,13 @@ def capture_superdoc_pages(
         page.evaluate("() => (document.fonts ? document.fonts.ready : true)")
 
         # Wait for layout to stabilize
-        page.wait_for_function(LAYOUT_READY_SCRIPT, timeout=timeout_ms)
+        try:
+            page.wait_for_function(LAYOUT_READY_SCRIPT, timeout=timeout_ms)
+        except PlaywrightTimeoutError as exc:
+            debug = _format_debug_context("wait_for_function LAYOUT_READY_SCRIPT")
+            raise RuntimeError(
+                f"Timed out waiting for layout readiness.\n{debug}"
+            ) from exc
 
         # Extra settle time
         page.wait_for_timeout(PAGE_SETTLE_MS)
