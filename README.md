@@ -15,23 +15,12 @@ Visual comparison tool for SuperDoc document rendering. Compares how SuperDoc re
 
 ## Installation
 
-### From GitHub Releases (recommended)
+### From npm (recommended)
 
-Download `superdoc-benchmark-macos.zip` from [Releases](../../releases), then:
-
-```bash
-# Extract and move to PATH
-unzip ~/Downloads/superdoc-benchmark-macos.zip -d ~/Downloads
-sudo mv ~/Downloads/dist/superdoc-benchmark /usr/local/bin/
-
-# macOS security: remove quarantine attribute
-xattr -d com.apple.quarantine /usr/local/bin/superdoc-benchmark
-```
-
-On first run, the app will automatically install the Playwright browser. If that fails, install manually:
+This installs a small wrapper with a bundled macOS binary (Apple Silicon only):
 
 ```bash
-npx playwright install chromium
+npm install -g @superdoc-dev/visual-benchmarks
 ```
 
 ### From source
@@ -45,11 +34,19 @@ uv sync
 uv run superdoc-benchmark
 ```
 
+GitHub Releases are notes-only; install via npm or from source.
+
 ## First Run
 
 On first use:
 1. **macOS will ask for permission** to control Microsoft Word - click "OK" to allow
 2. **Playwright browser** will be downloaded automatically (~150MB, one-time)
+
+If Playwright download fails, install manually:
+
+```bash
+npx playwright install chromium
+```
 
 ## Usage
 
@@ -68,6 +65,9 @@ superdoc-benchmark
 For scripting and automation:
 
 ```bash
+# Check tool version
+superdoc-benchmark --version
+
 # Capture Word visuals
 superdoc-benchmark word ./path/to/docs/
 superdoc-benchmark word ./document.docx --dpi 200 --force
@@ -139,12 +139,6 @@ uv run superdoc-benchmark
 ```bash
 uv run pyinstaller superdoc-benchmark.spec
 # Output: dist/superdoc-benchmark
-```
-
-**Release:**
-
-```bash
-./scripts/release.sh 0.1.0
 ```
 
 ## License

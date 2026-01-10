@@ -4,6 +4,8 @@ import json
 import shutil
 import subprocess
 import sys
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 from .config import CONFIG_DIR
@@ -38,6 +40,71 @@ def is_npm_available() -> bool:
         True if npm is in PATH.
     """
     return shutil.which("npm") is not None
+
+
+def resolve_npm_tag(package: str, tag: str) -> str:
+    """Resolve an npm dist-tag (like 'latest' or 'next') to an actual version.
+
+    Prefers npm itself to avoid local TLS/cert issues with Python's SSL stack.
+
+    Args:
+        package: Package name (e.g., "superdoc").
+        tag: Dist-tag to resolve (e.g., "latest", "next").
+
+    Returns:
+        The resolved version string (e.g., "1.5.2").
+
+    Raises:
+        RuntimeError: If the tag cannot be resolved.
+    """
+    npm_path = shutil.which("npm")
+    if npm_path:
+        try:
+            result = subprocess.run(
+                [npm_path, "view", f"{package}@{tag}", "version", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout:
+                output = result.stdout.strip()
+                try:
+                    version = json.loads(output)
+                except json.JSONDecodeError:
+                    version = output.strip('"')
+                if isinstance(version, str) and version:
+                    return version
+            error_output = ""
+            if result.stdout:
+                error_output += result.stdout
+            if result.stderr:
+                error_output += result.stderr
+            if error_output:
+                raise RuntimeError(error_output.strip())
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"npm view timed out after 30s") from exc
+
+    url = f"https://registry.npmjs.org/{package}/{tag}"
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            version = data.get("version")
+            if not version:
+                raise RuntimeError(f"No version found for {package}@{tag}")
+            return version
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise RuntimeError(f"Tag '{tag}' not found for package '{package}'") from e
+        raise RuntimeError(f"Failed to resolve {package}@{tag}: HTTP {e.code}") from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Failed to resolve {package}@{tag}: {e.reason}") from e
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"Invalid response from npm registry for {package}@{tag}") from e
 
 
 def ensure_npm_available() -> None:
@@ -153,11 +220,14 @@ def ensure_node_modules() -> None:
     run_npm(["install"], cwd=workspace, timeout=900)
 
 
-def install_superdoc_version(version: str) -> None:
+def install_superdoc_version(version: str) -> str:
     """Install a specific SuperDoc version from npm.
 
     Args:
         version: Version string like "2.0.0", "latest", or "next".
+
+    Returns:
+        The actual version installed (resolved from tag if applicable).
 
     Raises:
         RuntimeError: If installation fails.
@@ -165,24 +235,28 @@ def install_superdoc_version(version: str) -> None:
     ensure_npm_available()
     workspace = ensure_workspace()
 
+    # Resolve dist-tags (latest, next) to actual versions via npm registry
+    # This ensures we always get the current version, bypassing npm cache
+    resolved_version = version
+    if version in ("latest", "next"):
+        resolved_version = resolve_npm_tag("superdoc", version)
+
     # Remove existing node_modules to force clean install
     node_modules = workspace / "node_modules"
     if node_modules.exists():
         shutil.rmtree(node_modules)
 
-    # Update package.json with the requested version BEFORE npm install
+    # Update package.json with the resolved version BEFORE npm install
     package_json_path = workspace / "package.json"
     if package_json_path.exists():
         package_data = json.loads(package_json_path.read_text())
-        # Use the version directly for tags like "latest" or "next"
-        if version in ("latest", "next"):
-            package_data["dependencies"]["superdoc"] = version
-        else:
-            package_data["dependencies"]["superdoc"] = f"npm:superdoc@{version}"
+        package_data["dependencies"]["superdoc"] = f"npm:superdoc@{resolved_version}"
         package_json_path.write_text(json.dumps(package_data, indent=2))
 
     # Run npm install to get all dependencies including superdoc
     run_npm(["install"], cwd=workspace, timeout=600)
+
+    return resolved_version
 
 
 def get_installed_version() -> str | None:

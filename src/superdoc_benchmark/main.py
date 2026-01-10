@@ -38,6 +38,58 @@ LOGO_LINES = [
 ]
 
 
+def maybe_check_for_cli_update() -> None:
+    """Check npm for a newer superdoc-benchmark version and offer to update."""
+    import os
+    import sys
+
+    if os.environ.get("SUPERDOC_BENCHMARK_SKIP_UPDATE_CHECK") == "1":
+        return
+
+    if not sys.stdin.isatty() or not sys.stderr.isatty():
+        return
+
+    try:
+        from superdoc_benchmark.update import check_for_update, run_update
+    except Exception:
+        return
+
+    latest = check_for_update(__version__)
+    if not latest:
+        return
+
+    console.print()
+    console.print(
+        f"[yellow]New version available:[/yellow] {latest} (current: {__version__})"
+    )
+
+    try:
+        should_update = inquirer.confirm(
+            message="Update now with npm?",
+            default=True,
+            qmark="🦋",
+            amark="🦋",
+        ).execute()
+    except KeyboardInterrupt:
+        return
+
+    if not should_update:
+        console.print(
+            "[dim]Skipped. Run `npm update -g @superdoc-dev/visual-benchmarks` anytime.[/dim]"
+        )
+        return
+
+    try:
+        with console.status("[cyan]Updating via npm...", spinner="dots"):
+            run_update()
+        console.print(
+            "[green]Updated successfully![/green] Please re-run your command.\n"
+        )
+        raise typer.Exit(0)
+    except Exception as exc:
+        console.print(f"[red]Update failed:[/red] {exc}\n")
+
+
 def get_logo() -> Text:
     """Generate the colored SuperDoc ASCII art logo."""
     text = Text()
@@ -91,6 +143,7 @@ def show_main_menu() -> str | None:
         Choice(value="generate_word_visual", name="Generate Word visual"),
         Choice(value="compare_docx", name="Compare DOCX"),
         Choice(value="set_superdoc_version", name="Set SuperDoc version"),
+        Choice(value="check_updates", name="Check for updates"),
         Choice(value=None, name="Exit"),
     ]
 
@@ -407,6 +460,10 @@ def run_compare(docx_files: list[Path]) -> None:
 
     # Summary
     console.print()
+    from superdoc_benchmark.word.capture import get_reports_dir
+
+    reports_dir = get_reports_dir()
+    console.print(f"[dim]Reports directory:[/dim] {reports_dir}")
     cwd = Path.cwd()
     if report_results:
         console.print(f"[green]Generated reports for {len(report_results)} document(s)[/green]")
@@ -448,6 +505,7 @@ def handle_set_superdoc_version() -> None:
         validate_local_repo,
         get_installed_version,
         is_npm_available,
+        resolve_npm_tag,
     )
     from superdoc_benchmark.utils import validate_path
 
@@ -529,12 +587,16 @@ def handle_set_superdoc_version() -> None:
             return
 
         try:
-            with console.status("[cyan]Installing superdoc@latest...", spinner="dots"):
-                install_superdoc_version("latest")
-                actual_version = get_installed_version()
-                set_superdoc_version(actual_version or "latest")
+            # Resolve 'latest' tag to actual version first
+            console.print("[dim]Resolving latest version from npm...[/dim]")
+            resolved_version = resolve_npm_tag("superdoc", "latest")
+            console.print(f"[dim]Latest version: {resolved_version}[/dim]")
 
-            console.print(f"[green]Done![/green] SuperDoc {actual_version or 'latest'} is now active.\n")
+            with console.status(f"[cyan]Installing superdoc@{resolved_version}...", spinner="dots"):
+                install_superdoc_version("latest")
+                set_superdoc_version(resolved_version)
+
+            console.print(f"[green]Done![/green] SuperDoc {resolved_version} is now active.\n")
 
         except Exception as exc:
             console.print(f"[red]Installation failed:[/red] {exc}\n")
@@ -545,12 +607,16 @@ def handle_set_superdoc_version() -> None:
             return
 
         try:
-            with console.status("[cyan]Installing superdoc@next...", spinner="dots"):
-                install_superdoc_version("next")
-                actual_version = get_installed_version()
-                set_superdoc_version(actual_version or "next")
+            # Resolve 'next' tag to actual version first
+            console.print("[dim]Resolving next version from npm...[/dim]")
+            resolved_version = resolve_npm_tag("superdoc", "next")
+            console.print(f"[dim]Next version: {resolved_version}[/dim]")
 
-            console.print(f"[green]Done![/green] SuperDoc {actual_version or 'next'} is now active.\n")
+            with console.status(f"[cyan]Installing superdoc@{resolved_version}...", spinner="dots"):
+                install_superdoc_version("next")
+                set_superdoc_version(resolved_version)
+
+            console.print(f"[green]Done![/green] SuperDoc {resolved_version} is now active.\n")
 
         except Exception as exc:
             console.print(f"[red]Installation failed:[/red] {exc}\n")
@@ -636,8 +702,58 @@ def handle_set_superdoc_version() -> None:
             console.print(f"[red]Installation failed:[/red] {exc}\n")
 
 
+def handle_check_updates() -> None:
+    """Handle the Check for updates option (interactive)."""
+    console.print()
+    try:
+        from superdoc_benchmark.update import compare_versions, get_latest_version, run_update
+    except Exception as exc:
+        console.print(f"[red]Update check failed:[/red] {exc}\n")
+        return
+
+    latest = get_latest_version()
+    if not latest:
+        console.print("[red]Unable to check for updates (npm unavailable or offline).[/red]\n")
+        return
+
+    if compare_versions(latest, __version__) <= 0:
+        console.print("[dim]You are on the latest version.[/dim]\n")
+        return
+
+    console.print(
+        f"[yellow]New version available:[/yellow] {latest} (current: {__version__})"
+    )
+    try:
+        should_update = inquirer.confirm(
+            message="Update now with npm?",
+            default=True,
+            qmark="🦋",
+            amark="🦋",
+        ).execute()
+    except KeyboardInterrupt:
+        console.print("[dim]Cancelled[/dim]\n")
+        return
+
+    if not should_update:
+        console.print(
+            "[dim]Skipped. Run `npm update -g @superdoc-dev/visual-benchmarks` anytime.[/dim]\n"
+        )
+        return
+
+    try:
+        with console.status("[cyan]Updating via npm...", spinner="dots"):
+            run_update()
+        console.print(
+            "[green]Updated successfully![/green] Please re-run your command.\n"
+        )
+        raise typer.Exit(0)
+    except Exception as exc:
+        console.print(f"[red]Update failed:[/red] {exc}\n")
+
+
 def interactive_mode() -> None:
     """Run the interactive menu-driven interface."""
+    maybe_check_for_cli_update()
     show_welcome()
 
     while True:
@@ -653,6 +769,8 @@ def interactive_mode() -> None:
                 handle_compare_docx()
             elif choice == "set_superdoc_version":
                 handle_set_superdoc_version()
+            elif choice == "check_updates":
+                handle_check_updates()
         except KeyboardInterrupt:
             console.print("\n[dim]Cancelled[/dim]\n")
             continue
@@ -663,11 +781,22 @@ def interactive_mode() -> None:
 # =============================================================================
 
 @app.callback(invoke_without_command=True)
-def main_callback(ctx: typer.Context) -> None:
+def main_callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show superdoc-benchmark version and exit",
+    ),
+) -> None:
     """SuperDoc visual benchmarking tool.
 
     Run without arguments for interactive mode.
     """
+    if version:
+        console.print(__version__)
+        raise typer.Exit(0)
     if ctx.invoked_subcommand is None:
         interactive_mode()
 
@@ -827,8 +956,8 @@ def cmd_version_set(
         install_superdoc_version,
         install_superdoc_local,
         validate_local_repo,
-        get_installed_version,
         is_npm_available,
+        resolve_npm_tag,
     )
 
     if local:
@@ -859,12 +988,18 @@ def cmd_version_set(
             raise typer.Exit(1)
 
         try:
-            with console.status(f"[cyan]Installing superdoc@{version}...", spinner="dots"):
-                install_superdoc_version(version)
-                actual_version = get_installed_version()
-                set_superdoc_version(actual_version or version)
+            # Resolve dist-tags (latest, next) to actual versions
+            resolved_version = version
+            if version in ("latest", "next"):
+                console.print(f"[dim]Resolving {version} version from npm...[/dim]")
+                resolved_version = resolve_npm_tag("superdoc", version)
+                console.print(f"[dim]{version.capitalize()} version: {resolved_version}[/dim]")
 
-            console.print(f"[green]Done![/green] SuperDoc {actual_version or version} is now active.")
+            with console.status(f"[cyan]Installing superdoc@{resolved_version}...", spinner="dots"):
+                install_superdoc_version(version)
+                set_superdoc_version(resolved_version)
+
+            console.print(f"[green]Done![/green] SuperDoc {resolved_version} is now active.")
         except Exception as exc:
             console.print(f"[red]Installation failed:[/red] {exc}")
             raise typer.Exit(1)

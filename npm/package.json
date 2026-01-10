@@ -1,0 +1,41 @@
+{
+  "name": "@superdoc-dev/visual-benchmarks",
+  "version": "0.2.13",
+  "description": "Visual comparison tool for SuperDoc document rendering",
+  "bin": {
+    "superdoc-benchmark": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "vendor/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js",
+    "prepack": "node scripts/prepack.js",
+    "publish": "node scripts/publish.js"
+  },
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "engines": {
+    "node": ">=16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/superdoc-dev/superdoc-visual-benchmarks"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "superdoc",
+    "benchmark",
+    "docx",
+    "word",
+    "visual-testing",
+    "document-comparison"
+  ],
+  "license": "MIT"
+}

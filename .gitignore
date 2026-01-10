@@ -38,6 +38,12 @@ build/
 .AppleDouble
 .LSOverride
 
+# npm wrapper
+npm/node_modules/
+npm/.bin-cache/
+npm/package-lock.json
+npm/vendor/
+
 # Testing
 .pytest_cache/
 .coverage

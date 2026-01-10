@@ -1,5 +1,6 @@
 """Utility functions for superdoc-benchmark."""
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -60,7 +61,8 @@ def validate_path(path_str: str) -> Path | None:
 def make_docx_output_name(docx_path: Path, root: Path | None = None) -> str:
     """Build a filesystem-safe name for outputs tied to a docx file.
 
-    Includes parent path segments to avoid collisions when files share a name.
+    Uses a relative path when under root; otherwise uses a short name + hash
+    to avoid unreadably long absolute paths and collisions.
     """
     if root is None:
         try:
@@ -68,12 +70,20 @@ def make_docx_output_name(docx_path: Path, root: Path | None = None) -> str:
         except OSError:
             root = None
 
-    base_path = docx_path
+    base_path: Path | None = None
     if root is not None:
         try:
             base_path = docx_path.relative_to(root)
         except ValueError:
-            base_path = docx_path
+            base_path = None
+
+    if base_path is None:
+        parent = docx_path.parent.name or "documents"
+        stem = docx_path.stem
+        safe_parent = re.sub(r"[^A-Za-z0-9._-]+", "_", parent).strip("_") or "documents"
+        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("_") or "document"
+        path_hash = hashlib.md5(str(docx_path).encode()).hexdigest()[:6]
+        return f"{safe_parent}__{safe_stem}__{path_hash}"
 
     base_path = base_path.with_suffix("")
     name = base_path.as_posix()

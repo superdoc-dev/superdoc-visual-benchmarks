@@ -26,7 +26,7 @@ def get_reports_dir() -> Path:
 def get_word_output_dir(docx_path: Path) -> Path:
     """Get the Word output directory for a document's captures.
 
-    Creates a 'reports/word-captures/<docx-stem>' folder in the current working directory.
+    Creates a 'reports/word-captures/<docx-output-name>' folder in the current working directory.
 
     Args:
         docx_path: Path to the .docx file.
