@@ -4,7 +4,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -87,9 +86,8 @@ def export_word_pdf(docx_path: Path, pdf_path: Path) -> None:
 
     This function requires Microsoft Word to be installed on macOS.
 
-    To avoid macOS sandboxing permission dialogs, we copy the source file
-    to Word's container folder (where Word always has access), process it
-    there, then move results to the final destination.
+    Prefer a direct export to the destination path. If that fails (e.g.,
+    Word cannot access the file path), fall back to using Word's container.
 
     Args:
         docx_path: Path to the input .docx file.
@@ -107,35 +105,40 @@ def export_word_pdf(docx_path: Path, pdf_path: Path) -> None:
 
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Use Word's container folder to avoid sandbox permission dialogs
-    # Word always has full access to its own container
-    WORD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        run_cmd(
+            ["osascript", str(script_path), str(docx_path), str(pdf_path)],
+            timeout=300,
+        )
+        if not pdf_path.exists():
+            raise RuntimeError("PDF was not created")
+        return
+    except RuntimeError as exc:
+        direct_error = exc
 
-    # Sanitize filename to avoid issues with spaces/special characters in AppleScript
+    # Use Word's container folder as a fallback for stricter sandboxing setups.
+    WORD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     safe_stem = _sanitize_filename(docx_path.stem)
     temp_docx = WORD_TEMP_DIR / f"{safe_stem}.docx"
     temp_pdf = WORD_TEMP_DIR / f"{safe_stem}.pdf"
 
     try:
-        # Copy docx to Word's container
         shutil.copy2(str(docx_path), str(temp_docx))
-
-        # Export to PDF (both files in Word's container)
         run_cmd(
             ["osascript", str(script_path), str(temp_docx), str(temp_pdf)],
             timeout=300,
         )
-
-        # Move PDF to final destination
         if temp_pdf.exists():
             shutil.move(str(temp_pdf), str(pdf_path))
         else:
             raise RuntimeError("PDF was not created")
-
     except RuntimeError as exc:
-        raise RuntimeError(f"Failed to export Word document to PDF: {exc}") from exc
+        raise RuntimeError(
+            "Failed to export Word document to PDF.\n"
+            f"Direct export error: {direct_error}\n"
+            f"Fallback export error: {exc}"
+        ) from exc
     finally:
-        # Clean up temp files
         if temp_docx.exists():
             temp_docx.unlink()
         if temp_pdf.exists():
@@ -198,4 +201,3 @@ def get_pdf_page_count(pdf_path: Path) -> int:
     count = len(doc)
     doc.close()
     return count
-

@@ -152,7 +152,7 @@ def show_main_menu() -> str | None:
     result = inquirer.rawlist(
         message="Select an option:",
         choices=choices,
-        default="generate_word_visual",
+        default="compare_docx",
         qmark="🦋",
         amark="🦋",
         instruction="(↑↓ or type number)",
