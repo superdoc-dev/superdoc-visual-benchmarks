@@ -401,6 +401,7 @@ def capture_superdoc_visuals(
     docx_files: list[Path],
     output_dir: Path | None = None,
     headless: bool = True,
+    print_trailing_newline: bool = True,
 ) -> list[dict]:
     """Capture SuperDoc screenshots for multiple documents.
 
@@ -411,6 +412,7 @@ def capture_superdoc_visuals(
         docx_files: List of .docx file paths.
         output_dir: Optional base output directory.
         headless: Run browser in headless mode.
+        print_trailing_newline: Print a trailing newline after summary.
 
     Returns:
         List of result dicts.
@@ -533,5 +535,6 @@ def capture_superdoc_visuals(
         for path, err in errors:
             console.print(f"  [dim]•[/dim] {path.name}: {err}")
 
-    console.print()
+    if print_trailing_newline:
+        console.print()
     return results

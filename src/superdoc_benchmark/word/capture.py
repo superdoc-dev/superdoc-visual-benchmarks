@@ -90,6 +90,7 @@ def capture_word_visuals(
     output_dir: Path | None = None,
     dpi: int = DEFAULT_DPI,
     force: bool = False,
+    print_trailing_newline: bool = True,
 ) -> list[dict]:
     """Capture visual renders from Word for the given documents.
 
@@ -104,6 +105,7 @@ def capture_word_visuals(
                    folder in the current working directory.
         dpi: DPI for rasterization (default 144).
         force: If True, delete existing captures before re-capturing.
+        print_trailing_newline: Print a trailing newline after summary.
 
     Returns:
         List of result dicts, one per document.
@@ -174,5 +176,6 @@ def capture_word_visuals(
         for path, err in errors:
             console.print(f"  [dim]•[/dim] {path.name}: {err}")
 
-    console.print()
+    if print_trailing_newline:
+        console.print()
     return results

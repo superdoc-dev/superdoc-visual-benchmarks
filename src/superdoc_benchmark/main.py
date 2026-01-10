@@ -82,12 +82,14 @@ def maybe_check_for_cli_update() -> None:
     try:
         with console.status("[cyan]Updating via npm...", spinner="dots"):
             run_update()
-        console.print(
-            "[green]Updated successfully![/green] Please re-run your command.\n"
-        )
-        raise typer.Exit(0)
     except Exception as exc:
         console.print(f"[red]Update failed:[/red] {exc}\n")
+        return
+
+    console.print(
+        "[green]Updated successfully![/green] Please re-run your command.\n"
+    )
+    raise typer.Exit(0)
 
 
 def get_logo() -> Text:
@@ -140,8 +142,8 @@ def show_welcome() -> None:
 def show_main_menu() -> str | None:
     """Display the main menu and return the selected option."""
     choices = [
-        Choice(value="generate_word_visual", name="Generate Word visual"),
         Choice(value="compare_docx", name="Compare DOCX"),
+        Choice(value="generate_word_visual", name="Generate Word baseline"),
         Choice(value="set_superdoc_version", name="Set SuperDoc version"),
         Choice(value="check_updates", name="Check for updates"),
         Choice(value=None, name="Exit"),
@@ -311,6 +313,7 @@ def run_compare(docx_files: list[Path]) -> None:
     from superdoc_benchmark.compare import generate_reports
     from superdoc_benchmark.utils import make_docx_output_name
 
+    separator = "[dim]────────────────────────────────────────────────────────[/dim]"
     version_label = get_superdoc_version_label()
     config = get_config()
     is_local = config.get("superdoc_local_path") is not None
@@ -366,7 +369,9 @@ def run_compare(docx_files: list[Path]) -> None:
     # Capture missing Word screenshots
     if word_missing:
         console.print(f"📄 [cyan]Capturing Word screenshots for {len(word_missing)} file(s)...[/cyan]")
-        capture_word_visuals(word_missing)
+        capture_word_visuals(word_missing, print_trailing_newline=False)
+        console.print(separator)
+        console.print()
 
     # Capture SuperDoc screenshots (missing only for npm, all for local)
     if superdoc_missing:
@@ -374,9 +379,11 @@ def run_compare(docx_files: list[Path]) -> None:
             console.print(f"🦋 [cyan]Capturing SuperDoc ({version_label}) screenshots for {len(superdoc_missing)} file(s) (local - always recapture)...[/cyan]")
         else:
             console.print(f"🦋 [cyan]Capturing SuperDoc ({version_label}) screenshots for {len(superdoc_missing)} file(s)...[/cyan]")
-        capture_superdoc_visuals(superdoc_missing)
+        capture_superdoc_visuals(superdoc_missing, print_trailing_newline=False)
     else:
         console.print(f"🦋 [dim]SuperDoc captures exist for all files (npm version - skipping)[/dim]")
+    console.print(separator)
+    console.print()
 
     # Generate comparison reports (parallel for multiple files)
     from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -385,8 +392,6 @@ def run_compare(docx_files: list[Path]) -> None:
 
     report_results = []
     report_errors = []
-
-    console.print()
 
     # Prepare arguments for parallel execution
     report_args = []
@@ -748,12 +753,14 @@ def handle_check_updates() -> None:
     try:
         with console.status("[cyan]Updating via npm...", spinner="dots"):
             run_update()
-        console.print(
-            "[green]Updated successfully![/green] Please re-run your command.\n"
-        )
-        raise typer.Exit(0)
     except Exception as exc:
         console.print(f"[red]Update failed:[/red] {exc}\n")
+        return
+
+    console.print(
+        "[green]Updated successfully![/green] Please re-run your command.\n"
+    )
+    raise typer.Exit(0)
 
 
 def interactive_mode() -> None:
