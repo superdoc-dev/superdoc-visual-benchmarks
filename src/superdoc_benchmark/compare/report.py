@@ -9,6 +9,7 @@ import fitz  # PyMuPDF
 from PIL import Image
 
 from .diff import build_diff_overlay
+from .html_report import generate_html_report
 from .score import score_document
 
 # Reports folder in current working directory
@@ -226,12 +227,20 @@ def generate_reports(
     )
 
     report_by_version_path = _update_report_by_version(report_dir, docx_name)
+    html_report_path = generate_html_report(
+        docx_name=docx_name,
+        word_pages=word_pages,
+        superdoc_pages=superdoc_pages,
+        version_label=version_label,
+        report_dir=report_dir,
+    )
 
     return {
         "comparison_pdf": comparison_path,
         "diff_pdf": diff_path,
         "score_json": score_json_path,
         "report_by_version": report_by_version_path,
+        "html_report": html_report_path,
         "word_pages": len(word_pages),
         "superdoc_pages": len(superdoc_pages),
     }

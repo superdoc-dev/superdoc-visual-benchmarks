@@ -13,6 +13,7 @@ from .report import (
     get_reports_dir,
     get_report_dir,
 )
+from .html_report import generate_html_report
 from .score import (
     ScoreConfig,
     ScoreWeights,
@@ -32,6 +33,7 @@ __all__ = [
     "generate_diff_pdf",
     "get_reports_dir",
     "get_report_dir",
+    "generate_html_report",
     # Score
     "ScoreConfig",
     "ScoreWeights",

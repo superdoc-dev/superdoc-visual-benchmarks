@@ -279,18 +279,22 @@ def get_installed_version() -> str | None:
         return None
 
 
-def _collect_export_paths(exports: object, paths: set[str]) -> None:
+def _collect_export_paths(
+    exports: object, paths: set[str], ignore_keys: set[str] | None = None
+) -> None:
     if isinstance(exports, str):
         if exports.startswith("."):
             paths.add(exports)
         return
     if isinstance(exports, dict):
-        for value in exports.values():
-            _collect_export_paths(value, paths)
+        for key, value in exports.items():
+            if ignore_keys and key in ignore_keys:
+                continue
+            _collect_export_paths(value, paths, ignore_keys=ignore_keys)
         return
     if isinstance(exports, list):
         for value in exports:
-            _collect_export_paths(value, paths)
+            _collect_export_paths(value, paths, ignore_keys=ignore_keys)
 
 
 def validate_installed_superdoc(workspace: Path | None = None) -> None:
@@ -318,7 +322,7 @@ def validate_installed_superdoc(workspace: Path | None = None) -> None:
             candidates.append((field, value))
 
     export_paths: set[str] = set()
-    _collect_export_paths(data.get("exports"), export_paths)
+    _collect_export_paths(data.get("exports"), export_paths, ignore_keys={"source"})
     for value in sorted(export_paths):
         if "*" in value:
             continue
