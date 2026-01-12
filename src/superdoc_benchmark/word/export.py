@@ -26,9 +26,8 @@ DPI_MIN = 72
 DPI_MAX = 600
 DEFAULT_DPI = 144
 
-# Word's container folder - Word always has access here (no sandbox dialogs)
-WORD_CONTAINER = Path.home() / "Library/Containers/com.microsoft.Word/Data"
-WORD_TEMP_DIR = WORD_CONTAINER / "tmp" / "superdoc-benchmark"
+# Stable temp folder to minimize repeated Word permission prompts.
+BENCHMARK_TEMP_DIR = Path.home() / ".superdoc-benchmark" / "word-temp"
 
 
 def get_script_path() -> Path:
@@ -86,7 +85,7 @@ def export_word_pdf(docx_path: Path, pdf_path: Path) -> None:
 
     This function requires Microsoft Word to be installed on macOS.
 
-    Use Word's container folder to avoid repeated file access prompts. If that
+    Use a stable temp folder to reduce repeated Word file access prompts. If that
     fails, fall back to direct export.
 
     Args:
@@ -105,13 +104,13 @@ def export_word_pdf(docx_path: Path, pdf_path: Path) -> None:
 
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Use Word's container folder to avoid sandbox file access prompts.
-    WORD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    # Use a stable temp folder to avoid prompting per-source folder.
+    BENCHMARK_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     safe_stem = _sanitize_filename(docx_path.stem)
-    temp_docx = WORD_TEMP_DIR / f"{safe_stem}.docx"
-    temp_pdf = WORD_TEMP_DIR / f"{safe_stem}.pdf"
+    temp_docx = BENCHMARK_TEMP_DIR / f"{safe_stem}.docx"
+    temp_pdf = BENCHMARK_TEMP_DIR / f"{safe_stem}.pdf"
 
-    container_error: Exception | None = None
+    temp_error: Exception | None = None
     try:
         shutil.copy2(str(docx_path), str(temp_docx))
         run_cmd(
@@ -124,7 +123,7 @@ def export_word_pdf(docx_path: Path, pdf_path: Path) -> None:
             raise RuntimeError("PDF was not created")
         return
     except Exception as exc:
-        container_error = exc
+        temp_error = exc
     finally:
         if temp_docx.exists():
             temp_docx.unlink()
@@ -141,7 +140,7 @@ def export_word_pdf(docx_path: Path, pdf_path: Path) -> None:
     except Exception as exc:
         raise RuntimeError(
             "Failed to export Word document to PDF.\n"
-            f"Container export error: {container_error}\n"
+            f"Temp export error: {temp_error}\n"
             f"Direct export error: {exc}"
         ) from exc
 
