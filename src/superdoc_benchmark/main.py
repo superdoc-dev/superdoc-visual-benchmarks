@@ -1102,6 +1102,9 @@ def _init_playwright() -> None:
 
 def main() -> None:
     """Main entry point."""
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     # Ensure Playwright browser is available at startup
     _init_playwright()
     app()

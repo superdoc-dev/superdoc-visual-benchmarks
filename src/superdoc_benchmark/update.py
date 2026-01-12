@@ -167,8 +167,6 @@ def get_latest_version() -> str | None:
 
 
 def check_for_update(current_version: str) -> str | None:
-    if not should_check_for_update():
-        return None
     latest = get_latest_version()
     if not latest:
         return None
