@@ -845,20 +845,80 @@ def cmd_word(
 @app.command("compare")
 def cmd_compare(
     path: Path = typer.Argument(..., help="Path to .docx file or folder"),
+    superdoc_version: Optional[str] = typer.Option(
+        None,
+        "--superdoc-version",
+        help="SuperDoc version to install and use (e.g., 1.5.0, latest, next)",
+    ),
+    superdoc_local: Optional[Path] = typer.Option(
+        None,
+        "--superdoc-local",
+        help="Path to local SuperDoc repository to install and use",
+    ),
 ) -> None:
     """Compare Word and SuperDoc rendering for .docx files."""
     from superdoc_benchmark.utils import find_docx_files
-    from superdoc_benchmark.superdoc.config import get_config
+    from superdoc_benchmark.superdoc.config import get_config, set_superdoc_local_path, set_superdoc_version
+    from superdoc_benchmark.superdoc.version import (
+        install_superdoc_local,
+        install_superdoc_version,
+        is_npm_available,
+        resolve_npm_tag,
+        validate_local_repo,
+    )
 
     if not path.exists():
         console.print(f"[red]Path not found:[/red] {path}")
         raise typer.Exit(1)
 
-    config = get_config()
-    if not config.get("superdoc_version") and not config.get("superdoc_local_path"):
-        console.print("[red]SuperDoc is not configured.[/red]")
-        console.print("[dim]Run: superdoc-benchmark version set <version>[/dim]")
+    if superdoc_version and superdoc_local:
+        console.print("[red]Use either --superdoc-version or --superdoc-local (not both).[/red]")
         raise typer.Exit(1)
+
+    if superdoc_local:
+        if not superdoc_local.exists():
+            console.print(f"[red]Path not found:[/red] {superdoc_local}")
+            raise typer.Exit(1)
+        is_valid, ver, package_path, error = validate_local_repo(superdoc_local)
+        if not is_valid:
+            console.print(f"[red]Invalid repository:[/red] {error}")
+            raise typer.Exit(1)
+        try:
+            with console.status(
+                f"[cyan]Building and installing superdoc from {superdoc_local}...", spinner="dots"
+            ):
+                install_superdoc_local(package_path, repo_root=superdoc_local)
+                set_superdoc_local_path(superdoc_local)
+            console.print(f"[green]Using local SuperDoc {ver} from {superdoc_local}[/green]")
+        except Exception as exc:
+            console.print(f"[red]Installation failed:[/red] {exc}")
+            raise typer.Exit(1)
+    elif superdoc_version:
+        if not is_npm_available():
+            console.print("[red]npm is not installed. Please install Node.js first.[/red]")
+            raise typer.Exit(1)
+        try:
+            resolved_version = superdoc_version
+            if superdoc_version in ("latest", "next"):
+                console.print(f"[dim]Resolving {superdoc_version} version from npm...[/dim]")
+                resolved_version = resolve_npm_tag("superdoc", superdoc_version)
+                console.print(f"[dim]{superdoc_version.capitalize()} version: {resolved_version}[/dim]")
+
+            with console.status(
+                f"[cyan]Installing superdoc@{resolved_version}...", spinner="dots"
+            ):
+                install_superdoc_version(superdoc_version)
+                set_superdoc_version(resolved_version)
+            console.print(f"[green]Using SuperDoc {resolved_version}[/green]")
+        except Exception as exc:
+            console.print(f"[red]Installation failed:[/red] {exc}")
+            raise typer.Exit(1)
+    else:
+        config = get_config()
+        if not config.get("superdoc_version") and not config.get("superdoc_local_path"):
+            console.print("[red]SuperDoc is not configured.[/red]")
+            console.print("[dim]Run: superdoc-benchmark version set <version>[/dim]")
+            raise typer.Exit(1)
 
     docx_files = find_docx_files(path)
 
