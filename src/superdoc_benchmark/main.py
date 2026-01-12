@@ -274,31 +274,32 @@ def handle_compare_docx() -> None:
         console.print(f"[yellow]No .docx files found in {path}[/yellow]\n")
         return
 
-    run_compare(docx_files)
+    run_compare(docx_files, root_path=path)
 
 
 def _generate_report_task(
-    docx_path: Path,
+    docx_name: str,
     word_dir: Path,
     superdoc_dir: Path,
     version_label: str,
+    report_dir: Path,
 ) -> dict:
     """Worker function for parallel report generation.
 
     This is a module-level function so it can be pickled for ProcessPoolExecutor.
     """
     from superdoc_benchmark.compare import generate_reports
-    from superdoc_benchmark.utils import make_docx_output_name
 
     return generate_reports(
-        docx_name=make_docx_output_name(docx_path),
+        docx_name=docx_name,
         word_dir=word_dir,
         superdoc_dir=superdoc_dir,
         version_label=version_label,
+        report_dir=report_dir,
     )
 
 
-def run_compare(docx_files: list[Path]) -> None:
+def run_compare(docx_files: list[Path], root_path: Path | None = None) -> None:
     """Run the compare workflow for a list of docx files."""
     from superdoc_benchmark.word import (
         capture_word_visuals,
@@ -310,13 +311,19 @@ def run_compare(docx_files: list[Path]) -> None:
         get_superdoc_version_label,
     )
     from superdoc_benchmark.superdoc.config import get_config
-    from superdoc_benchmark.compare import generate_reports
-    from superdoc_benchmark.utils import make_docx_output_name
+    from superdoc_benchmark.compare import (
+        DocumentReportInput,
+        create_run_report_dir,
+        generate_html_report,
+        generate_reports,
+    )
+    from superdoc_benchmark.utils import make_docx_output_path
 
     separator = "[dim]────────────────────────────────────────────────────────[/dim]"
     version_label = get_superdoc_version_label()
     config = get_config()
     is_local = config.get("superdoc_local_path") is not None
+    run_dir, run_label = create_run_report_dir(version_label)
 
     version_type = "local" if is_local else "npm"
     console.print(f"[dim]SuperDoc version: [cyan]{version_label}[/cyan] ({version_type})[/dim]")
@@ -393,15 +400,28 @@ def run_compare(docx_files: list[Path]) -> None:
     report_results = []
     report_errors = []
 
+    root_for_reports = None
+    if root_path is not None and root_path.is_dir():
+        root_for_reports = root_path.parent
+
     # Prepare arguments for parallel execution
-    report_args = []
+    report_entries = []
     for docx_path in docx_files:
+        docx_rel = make_docx_output_path(docx_path, root_for_reports)
+        docx_name = docx_rel.as_posix()
         word_dir = get_word_output_dir(docx_path)
         superdoc_dir = get_superdoc_output_dir(docx_path)
-        report_args.append((docx_path, word_dir, superdoc_dir, version_label))
+        report_dir = run_dir / docx_rel
+        report_entries.append({
+            "docx_path": docx_path,
+            "docx_name": docx_name,
+            "word_dir": word_dir,
+            "superdoc_dir": superdoc_dir,
+            "report_dir": report_dir,
+        })
 
     # Use parallel processing for multiple files, sequential for single file
-    max_workers = min(len(docx_files), max(1, os.cpu_count() - 1)) if len(docx_files) > 1 else 1
+    max_workers = min(len(report_entries), max(1, os.cpu_count() - 1)) if len(report_entries) > 1 else 1
 
     with Progress(
         SpinnerColumn(),
@@ -411,22 +431,24 @@ def run_compare(docx_files: list[Path]) -> None:
         console=console,
     ) as progress:
         report_task = progress.add_task(
-            "[cyan]Generating comparison reports...", total=len(docx_files)
+            "[cyan]Generating comparison reports...", total=len(report_entries)
         )
 
         if max_workers == 1:
             # Sequential processing for single file
-            for docx_path, word_dir, superdoc_dir, ver_label in report_args:
+            for entry in report_entries:
+                docx_path = entry["docx_path"]
                 progress.update(
                     report_task,
                     description=f"[cyan]Generating report: [white]{docx_path.name}",
                 )
                 try:
                     result = generate_reports(
-                        docx_name=make_docx_output_name(docx_path),
-                        word_dir=word_dir,
-                        superdoc_dir=superdoc_dir,
-                        version_label=ver_label,
+                        docx_name=entry["docx_name"],
+                        word_dir=entry["word_dir"],
+                        superdoc_dir=entry["superdoc_dir"],
+                        version_label=version_label,
+                        report_dir=entry["report_dir"],
                     )
                     report_results.append((docx_path, result))
                 except Exception as exc:
@@ -444,12 +466,13 @@ def run_compare(docx_files: list[Path]) -> None:
                 future_to_path = {
                     executor.submit(
                         _generate_report_task,
-                        docx_path,
-                        word_dir,
-                        superdoc_dir,
-                        ver_label,
-                    ): docx_path
-                    for docx_path, word_dir, superdoc_dir, ver_label in report_args
+                        entry["docx_name"],
+                        entry["word_dir"],
+                        entry["superdoc_dir"],
+                        version_label,
+                        entry["report_dir"],
+                    ): entry["docx_path"]
+                    for entry in report_entries
                 }
 
                 # Collect results as they complete
@@ -463,6 +486,40 @@ def run_compare(docx_files: list[Path]) -> None:
                         console.print(f"  [red]Error:[/red] {docx_path.name}: {exc}")
                     progress.advance(report_task)
 
+    html_report_path = None
+    html_errors = []
+    html_inputs = []
+    for entry in report_entries:
+        word_pages = sorted(entry["word_dir"].glob("page_*.png"))
+        superdoc_pages = sorted(entry["superdoc_dir"].glob("page_*.png"))
+        if not word_pages:
+            html_errors.append((entry["docx_path"], f"No Word pages found in {entry['word_dir']}"))
+            continue
+        if not superdoc_pages:
+            html_errors.append((entry["docx_path"], f"No SuperDoc pages found in {entry['superdoc_dir']}"))
+            continue
+        score_path = entry["report_dir"] / f"score-{version_label}.json"
+        html_inputs.append(DocumentReportInput(
+            name=entry["docx_name"],
+            word_pages=word_pages,
+            superdoc_pages=superdoc_pages,
+            assets_dir=entry["report_dir"],
+            score_path=score_path if score_path.exists() else None,
+        ))
+
+    if html_inputs:
+        try:
+            html_report_path = generate_html_report(
+                documents=html_inputs,
+                version_label=version_label,
+                report_dir=run_dir,
+                run_label=run_label,
+            )
+        except Exception as exc:
+            console.print(f"[red]Failed to generate HTML report:[/red] {exc}")
+    else:
+        console.print("[yellow]No HTML report generated (missing page captures).[/yellow]")
+
     # Summary
     console.print()
     from superdoc_benchmark.word.capture import get_reports_dir
@@ -470,34 +527,46 @@ def run_compare(docx_files: list[Path]) -> None:
     reports_dir = get_reports_dir()
     console.print(f"[dim]Reports directory:[/dim] {reports_dir}")
     cwd = Path.cwd()
+    try:
+        run_rel = run_dir.relative_to(cwd)
+        run_display = f"./{run_rel}"
+    except ValueError:
+        run_display = str(run_dir)
+    console.print(f"[dim]Comparison run:[/dim] [cyan]{run_display}[/cyan]")
     if report_results:
         console.print(f"[green]Generated reports for {len(report_results)} document(s)[/green]")
         for docx_path, result in report_results:
             comparison_path = result["comparison_pdf"]
             diff_path = result["diff_pdf"]
             score_path = result.get("score_json")
-            html_path = result.get("html_report")
             try:
                 comparison_rel = comparison_path.relative_to(cwd)
                 diff_rel = diff_path.relative_to(cwd)
                 score_rel = score_path.relative_to(cwd) if score_path else None
-                html_rel = html_path.relative_to(cwd) if html_path else None
             except ValueError:
                 comparison_rel = comparison_path
                 diff_rel = diff_path
                 score_rel = score_path
-                html_rel = html_path
             console.print(f"  [dim]•[/dim] {docx_path.name}:")
             console.print(f"      comparison: [cyan]./{comparison_rel}[/cyan]")
             console.print(f"      diff: [cyan]./{diff_rel}[/cyan]")
             if score_rel:
                 console.print(f"      score: [cyan]./{score_rel}[/cyan]")
-            if html_rel:
-                console.print(f"      report: [cyan]./{html_rel}[/cyan]")
+
+    if html_report_path:
+        console.print()
+        html_display = str(html_report_path.resolve())
+        console.print(f"[dim]📄 Report viewer:[/dim] [cyan]{html_display}[/cyan]")
+        console.print("[dim]────────────────────────────────────────[/dim]")
 
     if report_errors:
         console.print(f"\n[red]Failed to generate reports for {len(report_errors)} document(s)[/red]")
         for path, err in report_errors:
+            console.print(f"  [dim]•[/dim] {path.name}: {err}")
+
+    if html_errors:
+        console.print(f"\n[yellow]Skipped {len(html_errors)} document(s) in the HTML report[/yellow]")
+        for path, err in html_errors:
             console.print(f"  [dim]•[/dim] {path.name}: {err}")
 
     console.print()
@@ -926,7 +995,7 @@ def cmd_compare(
         console.print(f"[yellow]No .docx files found in {path}[/yellow]")
         raise typer.Exit(1)
 
-    run_compare(docx_files)
+    run_compare(docx_files, root_path=path)
 
 
 @app.command("uninstall")

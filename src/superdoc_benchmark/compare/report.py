@@ -2,6 +2,7 @@
 
 import io
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,7 +10,6 @@ import fitz  # PyMuPDF
 from PIL import Image
 
 from .diff import build_diff_overlay
-from .html_report import generate_html_report
 from .score import score_document
 
 # Reports folder in current working directory
@@ -37,16 +37,34 @@ def get_comparisons_dir() -> Path:
     return comparisons_dir
 
 
-def get_report_dir(docx_name: str) -> Path:
-    """Get the report directory for a document.
+def _sanitize_report_label(value: str) -> str:
+    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("_")
+    return sanitized or "report"
 
-    Args:
-        docx_name: Name of the document (stem).
 
-    Returns:
-        Path to reports/comparisons/<docx_name>/
-    """
-    return get_comparisons_dir() / docx_name
+def build_run_label(version_label: str, timestamp: datetime | None = None) -> str:
+    """Build a timestamped label for a comparison run."""
+    safe_version = _sanitize_report_label(version_label)
+    when = timestamp or datetime.now()
+    stamp = when.strftime("%Y%m%d-%H%M%S")
+    return f"report-{safe_version}-{stamp}"
+
+
+def create_run_report_dir(version_label: str, timestamp: datetime | None = None) -> tuple[Path, str]:
+    """Create and return a run-level report directory and its label."""
+    run_label = build_run_label(version_label, timestamp)
+    run_dir = get_comparisons_dir() / run_label
+    if run_dir.exists():
+        suffix = datetime.now().strftime("%f")
+        run_label = f"{run_label}-{suffix}"
+        run_dir = get_comparisons_dir() / run_label
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir, run_label
+
+
+def get_doc_report_dir(run_dir: Path, docx_name: str) -> Path:
+    """Get the report directory for a document within a run."""
+    return run_dir / docx_name
 
 
 def create_side_by_side(
@@ -181,6 +199,7 @@ def generate_reports(
     word_dir: Path,
     superdoc_dir: Path,
     version_label: str,
+    report_dir: Path,
 ) -> dict:
     """Generate comparison and diff PDF reports for a document.
 
@@ -189,6 +208,7 @@ def generate_reports(
         word_dir: Directory containing Word page images.
         superdoc_dir: Directory containing SuperDoc page images.
         version_label: SuperDoc version label for filename.
+        report_dir: Output directory for the document's reports.
 
     Returns:
         Dict with paths to generated reports.
@@ -203,7 +223,6 @@ def generate_reports(
         raise RuntimeError(f"No SuperDoc pages found in {superdoc_dir}")
 
     # Create report directory
-    report_dir = get_report_dir(docx_name)
     report_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate comparison PDF
@@ -227,20 +246,13 @@ def generate_reports(
     )
 
     report_by_version_path = _update_report_by_version(report_dir, docx_name)
-    html_report_path = generate_html_report(
-        docx_name=docx_name,
-        word_pages=word_pages,
-        superdoc_pages=superdoc_pages,
-        version_label=version_label,
-        report_dir=report_dir,
-    )
 
     return {
+        "report_dir": report_dir,
         "comparison_pdf": comparison_path,
         "diff_pdf": diff_path,
         "score_json": score_json_path,
         "report_by_version": report_by_version_path,
-        "html_report": html_report_path,
         "word_pages": len(word_pages),
         "superdoc_pages": len(superdoc_pages),
     }

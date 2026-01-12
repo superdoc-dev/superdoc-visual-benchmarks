@@ -91,3 +91,20 @@ def make_docx_output_name(docx_path: Path, root: Path | None = None) -> str:
     name = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
     name = name.strip("_")
     return name or docx_path.stem
+
+
+def make_docx_output_path(docx_path: Path, root: Path | None = None) -> Path:
+    """Build a filesystem-safe relative path for outputs tied to a docx file."""
+    if root is not None:
+        try:
+            rel_path = docx_path.relative_to(root).with_suffix("")
+        except ValueError:
+            rel_path = None
+        if rel_path is not None:
+            safe_parts = []
+            for part in rel_path.parts:
+                safe = re.sub(r"[^A-Za-z0-9._-]+", "_", part).strip("_")
+                safe_parts.append(safe or "document")
+            return Path(*safe_parts)
+
+    return Path(make_docx_output_name(docx_path, root))

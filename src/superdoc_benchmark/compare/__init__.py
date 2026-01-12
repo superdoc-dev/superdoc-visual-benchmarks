@@ -7,13 +7,15 @@ from .diff import (
     SUPERDOC_DIFF_COLOR,
 )
 from .report import (
+    build_run_label,
+    create_run_report_dir,
     generate_reports,
     generate_comparison_pdf,
     generate_diff_pdf,
+    get_doc_report_dir,
     get_reports_dir,
-    get_report_dir,
 )
-from .html_report import generate_html_report
+from .html_report import generate_html_report, DocumentReportInput
 from .score import (
     ScoreConfig,
     ScoreWeights,
@@ -31,9 +33,12 @@ __all__ = [
     "generate_reports",
     "generate_comparison_pdf",
     "generate_diff_pdf",
+    "build_run_label",
+    "create_run_report_dir",
+    "get_doc_report_dir",
     "get_reports_dir",
-    "get_report_dir",
     "generate_html_report",
+    "DocumentReportInput",
     # Score
     "ScoreConfig",
     "ScoreWeights",

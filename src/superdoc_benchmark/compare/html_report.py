@@ -5,9 +5,9 @@ from __future__ import annotations
 import base64
 import json
 import os
-import re
 import shutil
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -416,6 +416,11 @@ HTML_TEMPLATE = """<!doctype html>
     <script id="report-data" type="application/json">__REPORT_JSON__</script>
     <script>
       const report = JSON.parse(document.getElementById('report-data').textContent);
+      const assetPrefix = (() => {
+        const raw = (report.assetPrefix || '').replace(/\\\\/g, '/');
+        if (!raw) return '';
+        return raw.endsWith('/') ? raw : raw + '/';
+      })();
 
       const groupsContainer = document.getElementById('groups');
       const metaContainer = document.getElementById('meta-pills');
@@ -497,6 +502,7 @@ HTML_TEMPLATE = """<!doctype html>
         return badge;
       }
 
+
       function buildImageCell(label, src, isMissing) {
         const cell = document.createElement('div');
         cell.className = 'image-cell';
@@ -529,13 +535,6 @@ HTML_TEMPLATE = """<!doctype html>
         cell.appendChild(cellLabel);
         cell.appendChild(frame);
         return cell;
-      }
-
-      function reasonLabel(reason) {
-        if (reason === 'missing_in_baseline') return { text: 'NEW', className: 'warn' };
-        if (reason === 'missing_in_results') return { text: 'REMOVED', className: 'danger' };
-        if (reason === 'dimension_mismatch') return { text: 'SIZE', className: 'diff' };
-        return { text: 'DIFF', className: 'diff' };
       }
 
       if (diffs.length === 0) {
@@ -590,9 +589,7 @@ HTML_TEMPLATE = """<!doctype html>
           const badges = document.createElement('div');
           badges.className = 'badges';
 
-          const reason = reasonLabel(item.reason);
-          badges.appendChild(createBadge(reason.text, reason.className));
-          badges.appendChild(createBadge(item.diffPercent.toFixed(2) + '%', 'mute'));
+          badges.appendChild(createBadge('DIFF', 'diff'));
 
           header.appendChild(pathLabel);
           header.appendChild(badges);
@@ -601,9 +598,10 @@ HTML_TEMPLATE = """<!doctype html>
           grid.className = 'image-grid';
 
           const baseDir = item.dir === '.' ? '' : item.dir + '/';
-          const diffSrc = item.hasDiff ? baseDir + item.baseName + '-diff.png' : '';
-          const baselineSrc = baseDir + item.baseName + '-baseline.png';
-          const actualSrc = baseDir + item.baseName + '-actual.png';
+          const assetBase = assetPrefix + baseDir;
+          const diffSrc = item.hasDiff ? assetBase + item.baseName + '-diff.png' : '';
+          const baselineSrc = assetBase + item.baseName + '-baseline.png';
+          const actualSrc = assetBase + item.baseName + '-actual.png';
 
           const missingBaseline = item.reason === 'missing_in_baseline';
           const missingActual = item.reason === 'missing_in_results';
@@ -665,9 +663,13 @@ HTML_TEMPLATE = """<!doctype html>
 """
 
 
-def _sanitize_slug(value: str) -> str:
-    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("_")
-    return sanitized or "report"
+@dataclass(frozen=True)
+class DocumentReportInput:
+    name: str
+    word_pages: list[Path]
+    superdoc_pages: list[Path]
+    assets_dir: Path
+    score_path: Path | None = None
 
 
 def _copy_image(src: Path, dst: Path) -> None:
@@ -730,40 +732,48 @@ def _generate_missing_overlay(
     return blended.convert("RGB")
 
 
-def generate_html_report(
-    docx_name: str,
-    word_pages: list[Path],
-    superdoc_pages: list[Path],
-    version_label: str,
-    report_dir: Path,
-    threshold_percent: float = DEFAULT_THRESHOLD_PERCENT,
-    diff_tolerance: int = DEFAULT_DIFF_TOLERANCE,
-) -> Path:
-    """Generate an HTML diff report and supporting artifacts.
+def _load_page_scores(score_path: Path | None) -> dict[int, float]:
+    if score_path is None or not score_path.exists():
+        return {}
 
-    Returns:
-        Path to the generated report.html.
-    """
-    report_slug = _sanitize_slug(version_label)
-    html_dir = report_dir / f"report-{report_slug}"
-    html_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        payload = json.loads(score_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
+    scores: dict[int, float] = {}
+    for page in payload.get("pages", []) or []:
+        page_num = page.get("page")
+        score = page.get("score")
+        if isinstance(page_num, int) and isinstance(score, (int, float)):
+            scores[page_num] = float(score)
+    return scores
+
+
+def _build_document_results(
+    document: DocumentReportInput,
+    threshold_percent: float,
+    diff_tolerance: int,
+) -> tuple[list[dict], dict]:
     results = []
     passed = 0
     failed = 0
     missing_in_baseline = 0
     missing_in_results = 0
 
-    max_pages = max(len(word_pages), len(superdoc_pages))
+    document.assets_dir.mkdir(parents=True, exist_ok=True)
+    max_pages = max(len(document.word_pages), len(document.superdoc_pages))
+    page_scores = _load_page_scores(document.score_path)
 
     for idx in range(max_pages):
-        word_path = word_pages[idx] if idx < len(word_pages) else None
-        superdoc_path = superdoc_pages[idx] if idx < len(superdoc_pages) else None
+        word_path = document.word_pages[idx] if idx < len(document.word_pages) else None
+        superdoc_path = document.superdoc_pages[idx] if idx < len(document.superdoc_pages) else None
         page_label = f"page_{idx + 1:04d}.png"
+        relative_label = f"{document.name}/{page_label}"
         base_name = f"page_{idx + 1:04d}"
-        baseline_dst = html_dir / f"{base_name}-baseline.png"
-        actual_dst = html_dir / f"{base_name}-actual.png"
-        diff_dst = html_dir / f"{base_name}-diff.png"
+        baseline_dst = document.assets_dir / f"{base_name}-baseline.png"
+        actual_dst = document.assets_dir / f"{base_name}-actual.png"
+        diff_dst = document.assets_dir / f"{base_name}-diff.png"
 
         if word_path is None and superdoc_path is None:
             continue
@@ -777,13 +787,14 @@ def generate_html_report(
                 diff_img.save(diff_dst)
                 total_pixels = img.size[0] * img.size[1]
             results.append({
-                "relativePath": page_label,
+                "relativePath": relative_label,
                 "passed": False,
                 "diffPixels": int(total_pixels),
                 "totalPixels": int(total_pixels),
                 "diffPercent": 100.0,
                 "diffPath": diff_dst.name,
                 "reason": "missing_in_baseline",
+                "score": page_scores.get(idx + 1),
             })
             continue
 
@@ -796,13 +807,14 @@ def generate_html_report(
                 diff_img.save(diff_dst)
                 total_pixels = img.size[0] * img.size[1]
             results.append({
-                "relativePath": page_label,
+                "relativePath": relative_label,
                 "passed": False,
                 "diffPixels": int(total_pixels),
                 "totalPixels": int(total_pixels),
                 "diffPercent": 100.0,
                 "diffPath": diff_dst.name,
                 "reason": "missing_in_results",
+                "score": page_scores.get(idx + 1),
             })
             continue
 
@@ -818,13 +830,14 @@ def generate_html_report(
                 diff_img.save(diff_dst)
                 total_pixels = word_img.size[0] * word_img.size[1]
                 results.append({
-                    "relativePath": page_label,
+                    "relativePath": relative_label,
                     "passed": False,
                     "diffPixels": -1,
                     "totalPixels": int(total_pixels),
                     "diffPercent": 100.0,
                     "diffPath": diff_dst.name,
                     "reason": "dimension_mismatch",
+                    "score": page_scores.get(idx + 1),
                 })
                 continue
 
@@ -835,13 +848,14 @@ def generate_html_report(
             if is_passed:
                 passed += 1
                 results.append({
-                    "relativePath": page_label,
+                    "relativePath": relative_label,
                     "passed": True,
                     "diffPixels": diff_pixels,
                     "totalPixels": total_pixels,
                     "diffPercent": diff_percent,
                     "diffPath": None,
                     "reason": None,
+                    "score": page_scores.get(idx + 1),
                 })
                 continue
 
@@ -851,30 +865,84 @@ def generate_html_report(
             diff_img = build_diff_overlay(word_img, superdoc_img)
             diff_img.save(diff_dst)
             results.append({
-                "relativePath": page_label,
+                "relativePath": relative_label,
                 "passed": False,
                 "diffPixels": diff_pixels,
                 "totalPixels": total_pixels,
                 "diffPercent": diff_percent,
                 "diffPath": diff_dst.name,
                 "reason": "pixel_diff",
+                "score": page_scores.get(idx + 1),
             })
 
+    summary = {
+        "passed": passed,
+        "failed": failed,
+        "missingInBaseline": missing_in_baseline,
+        "missingInResults": missing_in_results,
+        "total": len(results),
+    }
+    return results, summary
+
+
+def generate_html_report(
+    documents: list[DocumentReportInput],
+    version_label: str,
+    report_dir: Path,
+    run_label: str,
+    threshold_percent: float = DEFAULT_THRESHOLD_PERCENT,
+    diff_tolerance: int = DEFAULT_DIFF_TOLERANCE,
+) -> Path:
+    """Generate an HTML diff report and supporting artifacts for a run.
+
+    Returns:
+        Path to the generated report.html.
+    """
+    if not documents:
+        raise RuntimeError("No documents provided for HTML report.")
+
+    viewer_dir = report_dir / "report-viewer"
+    viewer_dir.mkdir(parents=True, exist_ok=True)
+
+    results = []
+    summary = {
+        "passed": 0,
+        "failed": 0,
+        "missingInBaseline": 0,
+        "missingInResults": 0,
+        "total": 0,
+    }
+
+    for document in documents:
+        doc_results, doc_summary = _build_document_results(
+            document,
+            threshold_percent=threshold_percent,
+            diff_tolerance=diff_tolerance,
+        )
+        results.extend(doc_results)
+        summary["passed"] += doc_summary["passed"]
+        summary["failed"] += doc_summary["failed"]
+        summary["missingInBaseline"] += doc_summary["missingInBaseline"]
+        summary["missingInResults"] += doc_summary["missingInResults"]
+        summary["total"] += doc_summary["total"]
+
+    document_label = documents[0].name if len(documents) == 1 else f"{len(documents)} documents"
+    asset_prefix = os.path.relpath(report_dir, viewer_dir).replace(os.sep, "/")
+    if asset_prefix == ".":
+        asset_prefix = ""
+    elif not asset_prefix.endswith("/"):
+        asset_prefix += "/"
+
     report = {
-        "resultsFolder": f"{docx_name} ({version_label})",
+        "resultsFolder": run_label,
         "baselineFolder": "Word",
         "superdocVersion": version_label,
-        "document": docx_name,
+        "document": document_label,
         "threshold": float(threshold_percent),
         "timestamp": datetime.now(tz=timezone.utc).isoformat(),
         "results": results,
-        "summary": {
-            "passed": passed,
-            "failed": failed,
-            "missingInBaseline": missing_in_baseline,
-            "missingInResults": missing_in_results,
-            "total": len(results),
-        },
+        "summary": summary,
+        "assetPrefix": asset_prefix,
     }
 
     report_json = json.dumps(report).replace("<", "\\u003c")
@@ -885,10 +953,10 @@ def generate_html_report(
         logo_markup = "SD"
 
     html = HTML_TEMPLATE.replace("__LOGO_MARKUP__", logo_markup).replace("__REPORT_JSON__", report_json)
-    report_path = html_dir / "report.html"
+    report_path = viewer_dir / "report.html"
     report_path.write_text(html, encoding="utf-8")
 
-    report_json_path = html_dir / "report.json"
+    report_json_path = viewer_dir / "report.json"
     report_json_path.write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
