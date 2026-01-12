@@ -134,7 +134,7 @@ def show_welcome() -> None:
         superdoc_status.append(f" ({superdoc_local})", style="dim")
     else:
         superdoc_status.append("not configured", style="yellow")
-        superdoc_status.append(" (use option 3 to set)", style="dim")
+        superdoc_status.append(" (use Set SuperDoc version)", style="dim")
     console.print(superdoc_status)
     console.print()
 
@@ -143,7 +143,6 @@ def show_main_menu() -> str | None:
     """Display the main menu and return the selected option."""
     choices = [
         Choice(value="compare_docx", name="Compare DOCX"),
-        Choice(value="generate_word_visual", name="Generate Word baseline"),
         Choice(value="set_superdoc_version", name="Set SuperDoc version"),
         Choice(value="check_updates", name="Check for updates"),
         Choice(value=None, name="Exit"),
@@ -242,7 +241,7 @@ def handle_compare_docx() -> None:
     config = get_config()
     if not config.get("superdoc_version") and not config.get("superdoc_local_path"):
         console.print("[yellow]SuperDoc is not configured.[/yellow]")
-        console.print("[dim]Use option 3 to set a SuperDoc version first.[/dim]\n")
+        console.print("[dim]Use Set SuperDoc version first.[/dim]\n")
         return
 
     try:
@@ -849,8 +848,6 @@ def interactive_mode() -> None:
             if choice is None:
                 console.print("[dim]Goodbye![/dim]")
                 break
-            elif choice == "generate_word_visual":
-                handle_generate_word_visual()
             elif choice == "compare_docx":
                 handle_compare_docx()
             elif choice == "set_superdoc_version":
