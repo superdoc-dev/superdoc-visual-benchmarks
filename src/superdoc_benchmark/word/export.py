@@ -86,8 +86,8 @@ def export_word_pdf(docx_path: Path, pdf_path: Path) -> None:
 
     This function requires Microsoft Word to be installed on macOS.
 
-    Prefer a direct export to the destination path. If that fails (e.g.,
-    Word cannot access the file path), fall back to using Word's container.
+    Use Word's container folder to avoid repeated file access prompts. If that
+    fails, fall back to direct export.
 
     Args:
         docx_path: Path to the input .docx file.
@@ -105,23 +105,13 @@ def export_word_pdf(docx_path: Path, pdf_path: Path) -> None:
 
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
-    try:
-        run_cmd(
-            ["osascript", str(script_path), str(docx_path), str(pdf_path)],
-            timeout=300,
-        )
-        if not pdf_path.exists():
-            raise RuntimeError("PDF was not created")
-        return
-    except RuntimeError as exc:
-        direct_error = exc
-
-    # Use Word's container folder as a fallback for stricter sandboxing setups.
+    # Use Word's container folder to avoid sandbox file access prompts.
     WORD_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     safe_stem = _sanitize_filename(docx_path.stem)
     temp_docx = WORD_TEMP_DIR / f"{safe_stem}.docx"
     temp_pdf = WORD_TEMP_DIR / f"{safe_stem}.pdf"
 
+    container_error: Exception | None = None
     try:
         shutil.copy2(str(docx_path), str(temp_docx))
         run_cmd(
@@ -132,17 +122,28 @@ def export_word_pdf(docx_path: Path, pdf_path: Path) -> None:
             shutil.move(str(temp_pdf), str(pdf_path))
         else:
             raise RuntimeError("PDF was not created")
-    except RuntimeError as exc:
-        raise RuntimeError(
-            "Failed to export Word document to PDF.\n"
-            f"Direct export error: {direct_error}\n"
-            f"Fallback export error: {exc}"
-        ) from exc
+        return
+    except Exception as exc:
+        container_error = exc
     finally:
         if temp_docx.exists():
             temp_docx.unlink()
         if temp_pdf.exists():
             temp_pdf.unlink()
+
+    try:
+        run_cmd(
+            ["osascript", str(script_path), str(docx_path), str(pdf_path)],
+            timeout=300,
+        )
+        if not pdf_path.exists():
+            raise RuntimeError("PDF was not created")
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to export Word document to PDF.\n"
+            f"Container export error: {container_error}\n"
+            f"Direct export error: {exc}"
+        ) from exc
 
 
 def rasterize_pdf(
