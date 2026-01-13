@@ -432,19 +432,25 @@ def run_pnpm_build(repo_root: Path, timeout: int = 300) -> None:
         raise RuntimeError("pnpm not found") from exc
 
 
-def install_superdoc_local(package_path: Path, repo_root: Path | None = None) -> None:
+def install_superdoc_local(
+    package_path: Path,
+    repo_root: Path | None = None,
+    skip_build: bool = False,
+) -> None:
     """Install SuperDoc from a local path.
 
     Args:
         package_path: Path to the superdoc package directory (containing package.json).
         repo_root: Path to the repository root for running build. If None, uses package_path.
+        skip_build: Skip pnpm build step (assumes artifacts already built).
 
     Raises:
         RuntimeError: If installation fails.
     """
-    # Run pnpm build at repo root first
-    build_path = repo_root if repo_root else package_path
-    run_pnpm_build(build_path)
+    if not skip_build:
+        # Run pnpm build at repo root first
+        build_path = repo_root if repo_root else package_path
+        run_pnpm_build(build_path)
 
     ensure_npm_available()
     workspace = ensure_workspace()

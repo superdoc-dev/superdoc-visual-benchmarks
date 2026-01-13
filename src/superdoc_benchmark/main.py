@@ -921,6 +921,12 @@ def cmd_compare(
         "--superdoc-local",
         help="Path to local SuperDoc repository to install and use",
     ),
+    skip_build: bool = typer.Option(
+        False,
+        "--skip-build",
+        "--no-build",
+        help="Skip pnpm build when installing from --superdoc-local",
+    ),
 ) -> None:
     """Compare Word and SuperDoc rendering for .docx files."""
     from superdoc_benchmark.utils import find_docx_files
@@ -950,10 +956,17 @@ def cmd_compare(
             console.print(f"[red]Invalid repository:[/red] {error}")
             raise typer.Exit(1)
         try:
+            status_label = "Installing superdoc from"
+            if not skip_build:
+                status_label = "Building and installing superdoc from"
             with console.status(
-                f"[cyan]Building and installing superdoc from {superdoc_local}...", spinner="dots"
+                f"[cyan]{status_label} {superdoc_local}...", spinner="dots"
             ):
-                install_superdoc_local(package_path, repo_root=superdoc_local)
+                install_superdoc_local(
+                    package_path,
+                    repo_root=superdoc_local,
+                    skip_build=skip_build,
+                )
                 set_superdoc_local_path(superdoc_local)
             console.print(f"[green]Using local SuperDoc {ver} from {superdoc_local}[/green]")
         except Exception as exc:
@@ -1092,6 +1105,12 @@ def version_callback(ctx: typer.Context) -> None:
 def cmd_version_set(
     version: Optional[str] = typer.Argument(None, help="Version to install (e.g., 1.0.0, latest, next)"),
     local: Optional[Path] = typer.Option(None, "--local", "-l", help="Path to local SuperDoc repository"),
+    skip_build: bool = typer.Option(
+        False,
+        "--skip-build",
+        "--no-build",
+        help="Skip pnpm build when using --local",
+    ),
 ) -> None:
     """Set the SuperDoc version to use."""
     from superdoc_benchmark.superdoc.config import set_superdoc_version, set_superdoc_local_path
@@ -1115,8 +1134,15 @@ def cmd_version_set(
             raise typer.Exit(1)
 
         try:
-            with console.status(f"[cyan]Building and installing superdoc from {local}...", spinner="dots"):
-                install_superdoc_local(package_path, repo_root=local)
+            status_label = "Installing superdoc from"
+            if not skip_build:
+                status_label = "Building and installing superdoc from"
+            with console.status(f"[cyan]{status_label} {local}...", spinner="dots"):
+                install_superdoc_local(
+                    package_path,
+                    repo_root=local,
+                    skip_build=skip_build,
+                )
                 set_superdoc_local_path(local)
 
             console.print(f"[green]Done![/green] Using local SuperDoc {ver} from {local}")
