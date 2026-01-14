@@ -44,3 +44,7 @@ git clone https://github.com/superdoc-dev/superdoc-visual-benchmarks
 cd superdoc-visual-benchmarks
 uv run superdoc-benchmark
 ```
+
+## License
+
+AGPL-3.0-only. See `LICENSE`.

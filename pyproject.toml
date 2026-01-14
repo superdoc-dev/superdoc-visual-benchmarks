@@ -2,6 +2,7 @@
 name = "superdoc-benchmark"
 version = "0.4.7"
 description = "Visual benchmarking tool for SuperDoc document rendering"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
     "InquirerPy>=0.3.4",

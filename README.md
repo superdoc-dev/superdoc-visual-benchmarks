@@ -143,4 +143,4 @@ uv run pyinstaller superdoc-benchmark.spec
 
 ## License
 
-MIT
+AGPL-3.0-only. See `LICENSE`.
