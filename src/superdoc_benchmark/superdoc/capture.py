@@ -514,10 +514,9 @@ def capture_superdoc_visuals(
                         progress.advance(overall_task)
 
     # Summary
-    console.print()
     cwd = Path.cwd()
     if results:
-        console.print(f"[green]Successfully captured {len(results)} document(s)[/green]")
+        console.print(f"  [green]Successfully captured {len(results)} document(s)[/green]")
         for r in results:
             out_dir = r["output_dir"]
             try:

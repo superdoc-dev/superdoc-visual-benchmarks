@@ -154,10 +154,9 @@ def capture_word_visuals(
             progress.advance(overall_task)
 
     # Summary
-    console.print()
     cwd = Path.cwd()
     if results:
-        console.print(f"[green]Successfully processed {len(results)} document(s)[/green]")
+        console.print(f"  [green]Successfully processed {len(results)} document(s)[/green]")
         for r in results:
             # Show relative path if under cwd
             out_dir = r["output_dir"]

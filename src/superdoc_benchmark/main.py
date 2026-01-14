@@ -298,7 +298,11 @@ def _generate_report_task(
     )
 
 
-def run_compare(docx_files: list[Path], root_path: Path | None = None) -> None:
+def run_compare(
+    docx_files: list[Path],
+    root_path: Path | None = None,
+    skip_reports: bool = False,
+) -> None:
     """Run the compare workflow for a list of docx files."""
     from superdoc_benchmark.word import (
         capture_word_visuals,
@@ -391,9 +395,13 @@ def run_compare(docx_files: list[Path], root_path: Path | None = None) -> None:
     console.print(separator)
     console.print()
 
+    if skip_reports:
+        console.print("[dim]Skipping report generation.[/dim]\n")
+        return
+
     # Generate comparison reports (parallel for multiple files)
     from concurrent.futures import ProcessPoolExecutor, as_completed
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+    from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn
     import os
 
     report_results = []
@@ -423,7 +431,6 @@ def run_compare(docx_files: list[Path], root_path: Path | None = None) -> None:
     max_workers = min(len(report_entries), max(1, os.cpu_count() - 1)) if len(report_entries) > 1 else 1
 
     with Progress(
-        SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TaskProgressColumn(),
@@ -442,6 +449,10 @@ def run_compare(docx_files: list[Path], root_path: Path | None = None) -> None:
                     description=f"[cyan]Generating report: [white]{docx_path.name}",
                 )
                 try:
+                    progress.update(
+                        report_task,
+                        description=f"[cyan]Generating report: [white]{docx_path.name}",
+                    )
                     result = generate_reports(
                         docx_name=entry["docx_name"],
                         word_dir=entry["word_dir"],
@@ -452,7 +463,7 @@ def run_compare(docx_files: list[Path], root_path: Path | None = None) -> None:
                     report_results.append((docx_path, result))
                 except Exception as exc:
                     report_errors.append((docx_path, str(exc)))
-                    console.print(f"  [red]Error:[/red] {docx_path.name}: {exc}")
+                    console.print(f"[red]Error:[/red] {docx_path.name}: {exc}")
                 progress.advance(report_task)
         else:
             # Parallel processing for multiple files
@@ -482,7 +493,7 @@ def run_compare(docx_files: list[Path], root_path: Path | None = None) -> None:
                         report_results.append((docx_path, result))
                     except Exception as exc:
                         report_errors.append((docx_path, str(exc)))
-                        console.print(f"  [red]Error:[/red] {docx_path.name}: {exc}")
+                        console.print(f"[red]Error:[/red] {docx_path.name}: {exc}")
                     progress.advance(report_task)
 
     html_report_path = None
@@ -520,18 +531,11 @@ def run_compare(docx_files: list[Path], root_path: Path | None = None) -> None:
         console.print("[yellow]No HTML report generated (missing page captures).[/yellow]")
 
     # Summary
-    console.print()
     from superdoc_benchmark.word.capture import get_reports_dir
 
     reports_dir = get_reports_dir()
     console.print(f"[dim]Reports directory:[/dim] {reports_dir}")
     cwd = Path.cwd()
-    try:
-        run_rel = run_dir.relative_to(cwd)
-        run_display = f"./{run_rel}"
-    except ValueError:
-        run_display = str(run_dir)
-    console.print(f"[dim]Comparison run:[/dim] [cyan]{run_display}[/cyan]")
     if report_results:
         console.print(f"[green]Generated reports for {len(report_results)} document(s)[/green]")
         for docx_path, result in report_results:
@@ -927,6 +931,11 @@ def cmd_compare(
         "--no-build",
         help="Skip pnpm build when installing from --superdoc-local",
     ),
+    skip_reports: bool = typer.Option(
+        False,
+        "--skip-reports",
+        help="Skip report generation (captures only)",
+    ),
 ) -> None:
     """Compare Word and SuperDoc rendering for .docx files."""
     from superdoc_benchmark.utils import find_docx_files
@@ -1005,7 +1014,7 @@ def cmd_compare(
         console.print(f"[yellow]No .docx files found in {path}[/yellow]")
         raise typer.Exit(1)
 
-    run_compare(docx_files, root_path=path)
+    run_compare(docx_files, root_path=path, skip_reports=skip_reports)
 
 
 @app.command("uninstall")
