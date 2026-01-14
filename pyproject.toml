@@ -1,6 +1,6 @@
 [project]
 name = "superdoc-benchmark"
-version = "0.4.7"
+version = "0.4.8"
 description = "Visual benchmarking tool for SuperDoc document rendering"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
