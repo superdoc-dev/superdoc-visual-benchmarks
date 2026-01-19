@@ -100,7 +100,7 @@ to openFile(docFile)
   local activeDocumentFile
 
   tell application "Microsoft Word"
-  set activeDocumentFile to ref to full name of active document
+    set activeDocumentFile to ref to full name of active document
     try
       with timeout of 3 seconds
         my debug("trying to open docFile " & docFile)
@@ -156,6 +156,7 @@ on run argv
   set pdfFile to (POSIX file pdfPath)
 
   -- Ensure that Word is in a sane state: dismiss any existing modals
+  tell application "Microsoft Word" to activate
   my debug("dismissing any pre-existing modals...")
   dismissModals()
   my debug("done!")
