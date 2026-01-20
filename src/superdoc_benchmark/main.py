@@ -910,7 +910,9 @@ def cmd_word(
         raise typer.Exit(1)
 
     console.print(f"[dim]Processing {len(docx_files)} .docx file(s)...[/dim]")
-    capture_word_visuals(docx_files, dpi=dpi, output_dir=output_dir, force=force)
+    results = capture_word_visuals(docx_files, dpi=dpi, output_dir=output_dir, force=force)
+    if not results:
+        raise typer.Exit(1)
 
 
 @app.command("compare")
