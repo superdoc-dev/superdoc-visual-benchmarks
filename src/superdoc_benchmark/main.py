@@ -893,6 +893,7 @@ def cmd_word(
     path: Path = typer.Argument(..., help="Path to .docx file or folder"),
     dpi: int = typer.Option(144, "--dpi", "-d", help="DPI for rasterization"),
     force: bool = typer.Option(False, "--force", "-f", help="Override existing captures"),
+    output_dir: Path = typer.Option(None, "--output-dir", "-o", help="Specify output directory (automatically generated based on filename by default)"),
 ) -> None:
     """Capture Word visuals for .docx files."""
     from superdoc_benchmark.utils import find_docx_files
@@ -909,7 +910,7 @@ def cmd_word(
         raise typer.Exit(1)
 
     console.print(f"[dim]Processing {len(docx_files)} .docx file(s)...[/dim]")
-    capture_word_visuals(docx_files, dpi=dpi, force=force)
+    capture_word_visuals(docx_files, dpi=dpi, output_dir=output_dir, force=force)
 
 
 @app.command("compare")
