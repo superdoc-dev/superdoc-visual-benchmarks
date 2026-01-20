@@ -8,7 +8,7 @@ const fs = require("fs");
 const BIN_CACHE = path.join(__dirname, "..", ".bin-cache");
 
 function main() {
-  const binaryPath = path.join(BIN_CACHE, "superdoc-benchmark");
+  const binaryPath = path.join(BIN_CACHE, "superdoc-benchmark", "superdoc-benchmark");
 
   if (!fs.existsSync(binaryPath)) {
     console.error("Binary not found. Try reinstalling:");
