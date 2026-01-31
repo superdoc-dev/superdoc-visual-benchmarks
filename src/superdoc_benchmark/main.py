@@ -893,6 +893,16 @@ def cmd_word(
     path: Path = typer.Argument(..., help="Path to .docx file or folder"),
     dpi: int = typer.Option(144, "--dpi", "-d", help="DPI for rasterization"),
     force: bool = typer.Option(False, "--force", "-f", help="Override existing captures"),
+    with_upload: bool = typer.Option(
+        False,
+        "--with-upload",
+        help="Upload Word baselines to internal storage (requires env vars)",
+    ),
+    group: Optional[str] = typer.Option(
+        None,
+        "--group",
+        help="Override capability group for uploaded baselines (e.g. lists, tables, basic)",
+    ),
 ) -> None:
     """Capture Word visuals for .docx files."""
     from superdoc_benchmark.utils import find_docx_files
@@ -909,7 +919,48 @@ def cmd_word(
         raise typer.Exit(1)
 
     console.print(f"[dim]Processing {len(docx_files)} .docx file(s)...[/dim]")
-    capture_word_visuals(docx_files, dpi=dpi, force=force)
+    results = capture_word_visuals(docx_files, dpi=dpi, force=force)
+
+    if with_upload and results:
+        from superdoc_benchmark.baselines.upload import (
+            load_upload_config,
+            upload_word_baseline_capture,
+        )
+
+        try:
+            upload_config = load_upload_config()
+        except RuntimeError as exc:
+            console.print(f"[red]Upload config error:[/red] {exc}")
+            raise typer.Exit(1)
+
+        upload_errors = []
+        for result in results:
+            docx_path = result.get("docx_path")
+            word_dir = result.get("output_dir")
+            if not docx_path or not word_dir:
+                upload_errors.append((docx_path, "Missing capture output metadata"))
+                continue
+            console.print(f"[cyan]Uploading baselines for {docx_path.name}...[/cyan]")
+            try:
+                response = upload_word_baseline_capture(
+                    docx_path,
+                    word_dir,
+                    upload_config,
+                    group_override=group,
+                )
+                baseline_folder = response.get("baseline_folder") or "unknown"
+                console.print(
+                    f"  [green]Uploaded[/green] {docx_path.name} -> {baseline_folder}"
+                )
+            except Exception as exc:
+                upload_errors.append((docx_path, str(exc)))
+                console.print(f"  [red]Upload failed:[/red] {docx_path.name}: {exc}")
+
+        if upload_errors:
+            console.print(
+                f"[red]Baseline upload failed for {len(upload_errors)} document(s).[/red]"
+            )
+            raise typer.Exit(1)
 
 
 @app.command("compare")
