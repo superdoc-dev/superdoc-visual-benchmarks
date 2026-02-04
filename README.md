@@ -86,31 +86,6 @@ superdoc-benchmark version set --local /path/to/repo  # use local repo (requires
 superdoc-benchmark uninstall                           # remove all cached data
 ```
 
-### Internal: Upload Word baselines
-
-> **Note:** This is an internal-only feature. It uploads Word baselines to SuperDoc
-> storage using a private API key.
-
-Required environment variables:
-
-- `SUPERDOC_BASELINE_API_URL` (e.g. `https://superdoc-labs-...run.app`)
-- `BASELINE_UPLOAD_API_KEY`
-- `SUPERDOC_WORD_VERSION_LABEL` (e.g. `word-2409`)
-- `SUPERDOC_PLATFORM_FINGERPRINT` (e.g. `mac14-word16.84`)
-
-Example:
-
-```bash
-SUPERDOC_BASELINE_API_URL=https://superdoc-labs-...run.app \
-SUPERDOC_WORD_VERSION_LABEL=word-2409 \
-SUPERDOC_PLATFORM_FINGERPRINT=mac14-word16.84 \
-superdoc-benchmark word /path/to/docs --with-upload --group basic
-```
-
-`doc_id` is derived from the filename:
-- `docid__name.docx` -> `doc_id=docid`
-- `name.docx` -> `doc_id=name` (normalized)
-
 ## Output
 
 All outputs are saved to the `reports/` directory:
