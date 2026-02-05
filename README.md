@@ -72,6 +72,13 @@ superdoc-benchmark --version
 superdoc-benchmark word ./path/to/docs/
 superdoc-benchmark word ./document.docx --dpi 200 --force
 
+# Capture Word baselines from R2 corpus and upload to R2
+superdoc-benchmark baseline fldchar/ --filter lists
+superdoc-benchmark baseline --filter basic
+superdoc-benchmark baseline
+superdoc-benchmark baseline fldchar/sd-1558-fld-char-issue.docx --filter tables --dry-run
+superdoc-benchmark baseline --filter basic --force
+
 # Compare Word vs SuperDoc
 superdoc-benchmark compare ./path/to/docs/
 
@@ -85,6 +92,23 @@ superdoc-benchmark version set --local /path/to/repo  # use local repo (requires
 # Clean up
 superdoc-benchmark uninstall                           # remove all cached data
 ```
+
+### R2 Baselines
+
+Downloads Word documents from the R2 corpus bucket and uploads screenshot baselines to
+the Word baseline bucket using the AWS SDK (no server required).
+
+Required environment variables:
+
+- `SD_TESTING_R2_ACCOUNT_ID`
+- `SD_TESTING_R2_ACCESS_KEY_ID`
+- `SD_TESTING_R2_SECRET_ACCESS_KEY`
+- `SD_TESTING_R2_BUCKET_NAME`
+- `SD_TESTING_R2_WORD_BUCKET_NAME`
+
+Baselines are written under `/<filter>/<filename.docx>/` and overwrite existing objects.
+If you omit `--filter`, baselines mirror the corpus folder path (e.g. `basic/foo.docx/`).
+Existing baselines are skipped by default; use `--force` to rebuild everything.
 
 ## Output
 

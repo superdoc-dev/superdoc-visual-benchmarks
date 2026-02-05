@@ -912,6 +912,181 @@ def cmd_word(
     capture_word_visuals(docx_files, dpi=dpi, force=force)
 
 
+def _process_baseline_uploads(
+    results: list[dict],
+    key_by_path: dict[Path, str],
+    r2_config: "R2Config",
+    filter_name: str | None,
+    dry_run: bool,
+    client: "S3Client",
+) -> list[tuple[Path | None, str]]:
+    """Process and upload baseline captures for each result.
+
+    Returns list of (docx_path, error_message) tuples for any failures.
+    """
+    from superdoc_benchmark.baselines.r2_upload import upload_word_baseline_capture
+
+    errors: list[tuple[Path | None, str]] = []
+    for result in results:
+        docx_path = result.get("docx_path")
+        word_dir = result.get("output_dir")
+        if not docx_path or not word_dir:
+            errors.append((docx_path, "Missing capture output metadata"))
+            continue
+
+        r2_key = key_by_path.get(docx_path, docx_path.name)
+        action = "Checking" if dry_run else "Uploading"
+        console.print(f"[cyan]{action} baselines for {r2_key}...[/cyan]")
+        try:
+            summary = upload_word_baseline_capture(
+                docx_path,
+                word_dir,
+                r2_config,
+                filter_name,
+                docx_key=r2_key,
+                dry_run=dry_run,
+                client=client,
+            )
+            bucket = summary.get("bucket") or "unknown"
+            prefix = summary.get("prefix") or "unknown"
+            if dry_run:
+                existing = summary.get("existing", 0)
+                missing = len(summary.get("missing", []))
+                extra = len(summary.get("extra", []))
+                console.print(
+                    f"  [yellow]Dry run:[/yellow] s3://{bucket}/{prefix}/ "
+                    f"(existing: {existing}, missing: {missing}, extra: {extra})"
+                )
+            else:
+                uploaded = summary.get("uploaded", 0)
+                deleted = summary.get("deleted", 0)
+                console.print(
+                    f"  [green]Uploaded[/green] {r2_key} -> "
+                    f"s3://{bucket}/{prefix}/ (files: {uploaded}, deleted: {deleted})"
+                )
+        except Exception as exc:
+            errors.append((docx_path, str(exc)))
+            console.print(f"  [red]Upload failed:[/red] {r2_key}: {exc}")
+
+    return errors
+
+
+@app.command("baseline")
+def cmd_baseline(
+    r2_path: Optional[str] = typer.Argument(
+        None, help="R2 key or prefix for .docx files (defaults to --filter)"
+    ),
+    filter_name: Optional[str] = typer.Option(
+        None,
+        "--filter",
+        help="R2 folder prefix for baselines (e.g. lists, tables)",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Rebuild and overwrite baselines even if they already exist",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Capture and check R2 without uploading",
+    ),
+) -> None:
+    """Capture Word baselines and upload to R2."""
+    from superdoc_benchmark.baselines.r2_upload import (
+        baseline_exists,
+        build_baseline_prefix,
+        create_r2_client,
+        download_docx_keys,
+        load_r2_config,
+        normalize_filter,
+        resolve_docx_keys,
+    )
+    from superdoc_benchmark.word import capture_word_visuals
+
+    try:
+        r2_config = load_r2_config()
+    except RuntimeError as exc:
+        console.print(f"[red]R2 config error:[/red] {exc}")
+        raise typer.Exit(1)
+
+    # Create R2 client once and reuse for all operations
+    client = create_r2_client(r2_config)
+
+    if filter_name is not None:
+        try:
+            filter_name = normalize_filter(filter_name)
+        except RuntimeError as exc:
+            console.print(f"[red]Invalid filter:[/red] {exc}")
+            raise typer.Exit(1)
+
+    if not r2_path and filter_name:
+        r2_path = filter_name
+
+    try:
+        docx_keys = resolve_docx_keys(r2_config, r2_path, client=client)
+    except RuntimeError as exc:
+        console.print(f"[red]R2 docx error:[/red] {exc}")
+        raise typer.Exit(1)
+
+    keys_to_process = []
+    skipped = []
+    if force:
+        keys_to_process = docx_keys
+    else:
+        for key in docx_keys:
+            prefix = build_baseline_prefix(filter_name, Path(key), docx_key=key)
+            try:
+                exists = baseline_exists(r2_config, prefix, client=client)
+            except Exception as exc:
+                console.print(f"[red]Baseline check failed:[/red] {key}: {exc}")
+                raise typer.Exit(1)
+            if exists:
+                skipped.append(key)
+            else:
+                keys_to_process.append(key)
+
+    if skipped:
+        console.print(
+            f"[dim]Skipping {len(skipped)} .docx file(s) with existing baselines.[/dim]"
+        )
+
+    if not keys_to_process:
+        console.print("[green]No new baselines to generate.[/green]")
+        return
+
+    console.print(
+        f"[dim]Downloading {len(keys_to_process)} .docx file(s) from superdoc-labs...[/dim]"
+    )
+    temp_dir = None
+    try:
+        docx_files, temp_dir = download_docx_keys(r2_config, keys_to_process, client=client)
+        key_by_path = {path: key for path, key in zip(docx_files, keys_to_process)}
+
+        console.print(f"[dim]Processing {len(docx_files)} .docx file(s)...[/dim]")
+        results = capture_word_visuals(docx_files, force=True)
+
+        if len(results) != len(docx_files):
+            console.print(
+                "[red]Baseline capture failed for one or more documents. Aborting upload.[/red]"
+            )
+            raise typer.Exit(1)
+
+        errors = _process_baseline_uploads(
+            results, key_by_path, r2_config, filter_name, dry_run, client
+        )
+
+        if errors:
+            console.print(
+                f"[red]Baseline upload failed for {len(errors)} document(s).[/red]"
+            )
+            raise typer.Exit(1)
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
+
+
 @app.command("compare")
 def cmd_compare(
     path: Path = typer.Argument(..., help="Path to .docx file or folder"),
