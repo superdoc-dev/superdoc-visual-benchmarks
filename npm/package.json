@@ -1,6 +1,6 @@
 {
   "name": "@superdoc-dev/visual-benchmarks",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "description": "Visual comparison tool for SuperDoc document rendering",
   "bin": {
     "superdoc-benchmark": "bin/cli.js"

@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_submodules
 
 datas = [
     ('scripts/export_word_pdf.applescript', 'scripts'),
@@ -6,7 +7,10 @@ datas = [
     ('node', 'node'),
 ]
 binaries = []
-hiddenimports = []
+# Rich dynamically imports unicode data modules like:
+# rich._unicode_data.unicode17-0-0
+# PyInstaller does not reliably detect these, so include all submodules.
+hiddenimports = collect_submodules('rich._unicode_data')
 
 a = Analysis(
     ['src/superdoc_benchmark/main.py'],
