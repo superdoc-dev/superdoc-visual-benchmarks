@@ -82,6 +82,9 @@ superdoc-benchmark baseline --filter basic --force
 # Compare Word vs SuperDoc
 superdoc-benchmark compare ./path/to/docs/
 
+# Capture SuperDoc pages only (single document)
+superdoc-benchmark superdoc ./document.docx --output-dir ./captures/sample/superdoc
+
 # Manage SuperDoc version
 superdoc-benchmark version                            # show current
 superdoc-benchmark version set latest                 # install latest from npm

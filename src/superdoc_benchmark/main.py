@@ -912,6 +912,52 @@ def cmd_word(
     capture_word_visuals(docx_files, dpi=dpi, force=force)
 
 
+@app.command("superdoc")
+def cmd_superdoc(
+    path: Path = typer.Argument(..., help="Path to a single .docx file"),
+    output_dir: Path = typer.Option(..., "--output-dir", "-o", help="Directory to write page images into"),
+    headless: bool = typer.Option(True, "--headless/--headed", help="Run the browser in headless mode"),
+) -> None:
+    """Capture SuperDoc page images for a single .docx file."""
+    from superdoc_benchmark.superdoc import capture_superdoc_single
+    from superdoc_benchmark.superdoc.config import get_config
+
+    if not path.exists():
+        console.print(f"[red]Path not found:[/red] {path}")
+        raise typer.Exit(1)
+
+    if not path.is_file():
+        console.print(f"[red]Expected a single .docx file, got:[/red] {path}")
+        raise typer.Exit(1)
+
+    if path.suffix.lower() != ".docx":
+        console.print(f"[red]Expected a .docx file, got:[/red] {path}")
+        raise typer.Exit(1)
+
+    config = get_config()
+    if not config.get("superdoc_version") and not config.get("superdoc_local_path"):
+        console.print("[red]SuperDoc is not configured.[/red]")
+        console.print("[dim]Run: superdoc-benchmark version set <version>[/dim]")
+        console.print("[dim]Or:  superdoc-benchmark version set --local /path/to/repo[/dim]")
+        raise typer.Exit(1)
+
+    resolved_output_dir = output_dir.resolve()
+
+    try:
+        result = capture_superdoc_single(
+            docx_path=path.resolve(),
+            output_dir=resolved_output_dir,
+            headless=headless,
+        )
+    except Exception as exc:
+        console.print(f"[red]Capture failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    console.print(
+        f"[green]Captured {result['page_count']} page(s)[/green] -> {result['output_dir']}"
+    )
+
+
 def _process_baseline_uploads(
     results: list[dict],
     key_by_path: dict[Path, str],
